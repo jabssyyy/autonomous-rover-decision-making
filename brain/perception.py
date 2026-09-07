@@ -14,6 +14,7 @@ import math
 from pathlib import Path
 from collections import deque
 from novelty import NoveltyMemory
+from model_paths import loadable_checkpoint
 import time
 from dataclasses import dataclass, field
 
@@ -156,7 +157,7 @@ class Perceiver:
         if use_yolo and (Path(__file__).resolve().parent / pcfg["yolo_weights"]).is_file():
             try:
                 from ultralytics import YOLO
-                self.yolo = YOLO(str(Path(__file__).resolve().parent / pcfg["yolo_weights"]))
+                self.yolo = YOLO(loadable_checkpoint(Path(__file__).resolve().parent / pcfg["yolo_weights"]))
                 if list(self.yolo.names.values()) != ["rock"]:
                     self.yolo = None
                     raise ValueError("learned detector must have exactly one class: rock")

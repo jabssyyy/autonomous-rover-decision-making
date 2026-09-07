@@ -1,29 +1,21 @@
 # Progress and restart guide
 
-Last updated: 2026-09-07. Owner: Jabin.
+Updated 2026-09-07. Owner: Jabin.
 
-**Current: Dev's simulator merged; initial real Godot + BRAIN integration passed.**
+**Current: Phase 3 rock detector trained, tested and installed; novelty calibration open.**
 
-Preserved prior BRAIN in `0e28b90`, merged Dev's `151c4a0` in `8d602bf`, then
-corrected integration mismatches. Nothing was pushed. The real BRAIN (classical
-fallback, not Dev's probe/dummy) received 525 rendered frames, emitted 96 valid
-actions, stopped when disconnected, reconnected and confirmed M02 at 61.8 s.
-The checked post-disconnect window showed 0.00 m motion. Dev's verify_run.py
-also accepts the final recording. See [phase2-integration.md](phase2-integration.md)
-for paths, commands, coarse camera range measurements and energy accounting.
+1,500 images, 10 layout groups, 15 YOLO26n epochs. Held-out test: mAP50 0.8979,
+precision 0.9024, recall 0.8288. Local weights: brain/weights/rock.pt; hash and
+evidence in brain/rock-model.json. Learned Godot smoke passed: 100 frames,
+19 actions, aruco+yolo+resnet18. Classical fallback remains available.
+60 Python checks pass. See [phase3-results.md](phase3-results.md).
 
-Checks now pass: 6 foundation + 28 policy/runtime + 12 training preparation +
-5 novelty preparation = 51 Python checks; Godot integration assertions pass,
-Python compilation and git diff --check pass. Real-SIM acceptance is additional.
-No all-marker mission, learned detector, browser PANEL or staged stay/deviate
-run is claimed. Godot acceptance used a 3-second development downlink.
+Novelty diagnostic did not separate the small sample: AUC0.4609, both medians
+zero, 64 familiar and only 2 unusual objects. Runtime novelty settings unchanged.
+Next: broader novelty capture/calibration. Full Phase 3, browser PANEL and staged
+stay/deviate runs remain incomplete. Stop for Jabin review. Nothing pushed.
 
-Phase 3 tools exist but training is not complete. Next: adapt Dev's labeller
-from three classes to single-class rock, add independent capture grouping and
-manifest, visually review labels, then train/evaluate and calibrate novelty.
-Stop at this integration boundary before beginning that training phase.
-
-Earlier entries below are historical and may describe the pre-SIM checkout.
+Earlier entries below are historical.
 
 ## Working agreement
 

@@ -1,3 +1,7 @@
+> **Current Phase 3 result:** Rock detector trained on 1,500 images, held-out
+> mAP50 0.8979, installed and tested with real Godot. Novelty calibration remains
+> incomplete. See [measured results](phase3-results.md). Older status notes below are historical.
+
 # Phase 3: perception upgrade
 
 Status 2026-09-07: Dev's SIM is merged and initial marker integration passes.

@@ -1,3 +1,7 @@
+> **Current Phase 3 result:** Rock detector trained on 1,500 images, held-out
+> mAP50 0.8979, installed and tested with real Godot. Novelty calibration remains
+> incomplete. See [measured results](phase3-results.md). Older status notes below are historical.
+
 > **Integration update, 2026-09-07:** Dev's `151c4a0` is merged locally.
 > Real Godot + BRAIN acceptance passed: 525 frames, 96 validated actions,
 > M02 confirmed, disconnect stop and reconnect verified. See

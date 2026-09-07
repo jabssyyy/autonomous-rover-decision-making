@@ -10,6 +10,7 @@ import numpy as np
 
 from rock_dataset import inspect_export, prepare, verify_prepared, split_groups
 from train_rocks import parser, run
+from model_paths import loadable_checkpoint
 
 
 class DatasetTests(unittest.TestCase):
@@ -102,6 +103,19 @@ class DatasetTests(unittest.TestCase):
         result = run(args, lambda _: FakeModel())
         self.assertEqual(result['best_checkpoint'], str(best.resolve()))
         self.assertTrue((args.output / 'result.json').is_file())
+
+    def test_apostrophe_training_path_fails_before_loading(self):
+        args = self.args()
+        args.output = self.root / "unsafe'path"
+        with self.assertRaisesRegex(ValueError, 'apostrophes'):
+            run(args, lambda _: self.fail('model must not load'))
+
+    def test_checkpoint_cache_preserves_bytes(self):
+        source = self.root / "weights'quoted.pt"
+        source.write_bytes(b'checkpoint fixture with apostrophe')
+        cached = Path(loadable_checkpoint(source))
+        self.assertNotIn("'", str(cached))
+        self.assertEqual(source.read_bytes(), cached.read_bytes())
 
     def test_held_out_evaluation(self):
         args = self.args('evaluate')

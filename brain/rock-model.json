@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "architecture": "YOLO26n",
+  "classes": [
+    "rock"
+  ],
+  "checkpoint": "brain/weights/rock.pt",
+  "sha256": "be80a8aa2b92a63dc954996462c0d473789d1e5d9351e5e98831753d2922004e",
+  "epochs": 15,
+  "images": 1500,
+  "groups": 10,
+  "test_metrics": {
+    "mAP50": 0.8978541689440771,
+    "mAP50_95": 0.5685488625020073,
+    "precision": 0.9024219959521865,
+    "recall": 0.8287875782563973
+  },
+  "test_result": "recordings/rock-test-v1/result.json",
+  "training_result": "recordings/rock-train-v1/result.json",
+  "live_result": "recordings/godot-acceptance-20260907-154042/result.json",
+  "decision_frame_perception_ms": {
+    "median": 235.2,
+    "p95": 328.2699999999992
+  },
+  "status": "Installed after held-out test, visual review and short live check. Novelty calibration remains incomplete."
+}

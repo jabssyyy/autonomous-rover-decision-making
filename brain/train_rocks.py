@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 
 from rock_dataset import digest, verify_prepared
+from model_paths import loadable_checkpoint
 
 
 def run(args, model_factory=None):
@@ -22,6 +23,8 @@ def run(args, model_factory=None):
     if args.mode == 'train' and not weights.is_file() and args.weights != 'yolo26n.pt':
         raise ValueError('provide a local checkpoint or the supported yolo26n.pt download name')
     output = args.output.resolve()
+    if args.mode == 'train' and "'" in str(output):
+        raise ValueError("Ultralytics final validation removes apostrophes from checkpoint paths; use an output such as C:/dev/iete-training/rock-v2")
     if output.exists():
         raise ValueError('use a fresh output directory to preserve earlier results')
     if output == dataset.parent or output.is_relative_to(dataset.parent):
@@ -31,14 +34,14 @@ def run(args, model_factory=None):
                 'provenance_sha256': digest(dataset.with_name('provenance.json')),
                 'counts': provenance['counts'], 'weights': str(weights),
                 'input_weights_sha256': digest(weights) if weights.is_file() else None,
-                'seed': 7, 'imgsz': 640, 'epochs': args.epochs, 'batch': args.batch,
+                'seed': 7, 'imgsz': 640, 'epochs': args.epochs if args.mode == 'train' else None, 'batch': args.batch,
                 'device': args.device, 'dry_run': args.dry_run}
     if args.dry_run:
         return evidence
     if model_factory is None:
         from ultralytics import YOLO
         model_factory = YOLO
-    model = model_factory(str(weights))
+    model = model_factory(loadable_checkpoint(weights) if weights.is_file() else str(weights))
     output.mkdir(parents=True)
     evidence['input_weights_sha256'] = digest(weights) if weights.is_file() else evidence['input_weights_sha256']
     common = dict(data=str(dataset), imgsz=640, batch=args.batch, device=args.device,

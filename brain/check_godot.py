@@ -40,6 +40,10 @@ def run(args):
     run_dir = sim.parent / 'runs' / out.name
     cfg = yaml.safe_load((HERE / 'brain.yaml').read_text(encoding='utf-8-sig'))
     cfg['ports'].update(host='127.0.0.1', sim=args.port, panel=args.port + 1)
+    if args.rock_weights:
+        if not args.rock_weights.is_file():
+            raise ValueError('candidate rock checkpoint is missing')
+        cfg['perception']['yolo_weights'] = str(args.rock_weights.resolve())
     (out / 'brain.yaml').write_text(yaml.safe_dump(cfg), encoding='utf-8')
     startup = None
     if sys.platform == 'win32':
@@ -57,15 +61,22 @@ def run(args):
 
     def start_brain(name):
         command = [sys.executable, '-u', str(HERE / 'main.py'), '--brain', str(out / 'brain.yaml'),
-                   '--config', str(HERE / 'config.yaml'), '--no-yolo', '--delay', '3',
+                   '--config', str(HERE / 'config.yaml'), '--delay', '3',
                    '--record-dir', str(out / name), '--tag', name]
         if not args.torch:
             command.append('--no-torch')
+        if not args.rock_weights:
+            command.append('--no-yolo')
         return launch(name, command)
 
     stopped, restarted, stop_time = False, False, None
     try:
         brain = start_brain('brain-first')
+        ready_deadline = time.monotonic() + 60
+        while 'BRAIN up:' not in (out / 'brain-first.log').read_text(encoding='utf-8'):
+            if brain.poll() is not None or time.monotonic() > ready_deadline:
+                raise RuntimeError('BRAIN failed to start; inspect brain-first.log')
+            time.sleep(.1)
         godot = launch('godot', [str(args.godot.resolve()), '--path', str(sim), '--resolution', '960x540',
                                '--', '--brain=ws://127.0.0.1:' + str(args.port),
                                '--config=' + str(HERE / 'config.yaml'), '--record=' + out.name,
@@ -75,7 +86,7 @@ def run(args):
         while godot.poll() is None and time.monotonic() < deadline:
             observed = rows(run_dir / 'observations.jsonl')
             t = observed[-1]['sim_time'] if observed else 0
-            if t >= 12 and not stopped:
+            if t >= 12 and not stopped and not args.smoke:
                 brain.terminate(); brain.wait(timeout=10)
                 stopped, stop_time = True, t
                 print('Stopped BRAIN at physics second', t, flush=True)
@@ -100,7 +111,8 @@ def run(args):
             handle.close()
 
     observed, actions = rows(run_dir / 'observations.jsonl'), rows(run_dir / 'actions.jsonl')
-    assert observed and actions and restarted, 'missing observations/actions/reconnect'
+    assert observed and len(actions) >= 5, 'missing observations/actions'
+    assert args.smoke or restarted, 'missing reconnect'
     for original in observed:
         observation = dict(original)
         ref = observation.pop('_frame_ref'); observation.pop('_bytes')
@@ -112,17 +124,23 @@ def run(args):
     for a, b in zip(observed, observed[1:]):
         assert b['seq'] > a['seq'] and b['sim_time'] > a['sim_time']
         assert b['budget']['remaining'] <= a['budget']['remaining']
-    stopped_obs = [o for o in observed if stop_time + 3 <= o['sim_time'] <= stop_time + 5.5]
-    assert len(stopped_obs) >= 5
-    movement = max(math.hypot(o['pose']['x'] - stopped_obs[0]['pose']['x'],
-                              o['pose']['y'] - stopped_obs[0]['pose']['y']) for o in stopped_obs)
-    assert movement <= .03, f'rover moved {movement} m after watchdog deadline'
-    assert any(a['sim_time'] > stop_time + 10 for a in actions), 'no actions after reconnect'
-    assert observed[-1]['mission']['confirmed_markers'], 'no marker reached and confirmed'
+    movement = None
+    if not args.smoke:
+        stopped_obs = [o for o in observed if stop_time + 3 <= o['sim_time'] <= stop_time + 5.5]
+        assert len(stopped_obs) >= 5
+        movement = max(math.hypot(o['pose']['x'] - stopped_obs[0]['pose']['x'],
+                                  o['pose']['y'] - stopped_obs[0]['pose']['y']) for o in stopped_obs)
+        assert movement <= .03, f'rover moved {movement} m after watchdog deadline'
+        assert any(a['sim_time'] > stop_time + 10 for a in actions), 'no actions after reconnect'
+        assert observed[-1]['mission']['confirmed_markers'], 'no marker reached and confirmed'
+    backend = 'aruco+' + ('yolo' if args.rock_weights else 'blobs') + ('+resnet18' if args.torch else '+hist')
+    assert 'perception backend: ' + backend in (out / 'brain-first.log').read_text(encoding='utf-8')
     report = {'observations': len(observed), 'actions': len(actions), 'sim_recording': str(run_dir),
               'confirmed': observed[-1]['mission']['confirmed_markers'], 'stop_time': stop_time,
               'stationary_window_movement_m': movement, 'reconnected': restarted,
-              'encoder': 'resnet18' if args.torch else 'hist', 'detector': 'classical fallback',
+              'encoder': 'resnet18' if args.torch else 'hist', 'backend': backend,
+              'mode': 'perception smoke' if args.smoke else 'marker and reconnect acceptance',
+              'detector': 'trained rock' if args.rock_weights else 'classical fallback',
               'final_budget_wh': observed[-1]['budget']['remaining']}
     (out / 'result.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, indent=2))
@@ -135,7 +153,9 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=19765)
     parser.add_argument('--seconds', type=int, default=105)
     parser.add_argument('--torch', action='store_true')
+    parser.add_argument('--rock-weights', type=Path, help='Validate candidate weights without installing them')
+    parser.add_argument('--smoke', action='store_true', help='Check live perception/actions only; omit marker/reconnect assertions')
     args = parser.parse_args()
-    if args.seconds < 30:
-        parser.error('--seconds must be at least 30; default allows time to reach a marker')
+    if args.seconds < (15 if args.smoke else 30):
+        parser.error('allow at least 15 seconds for smoke or 30 for full acceptance')
     run(args)

@@ -1,3 +1,7 @@
+> **Current Phase 3 result:** Rock detector trained on 1,500 images, held-out
+> mAP50 0.8979, installed and tested with real Godot. Novelty calibration remains
+> incomplete. See [measured results](phase3-results.md). Older status notes below are historical.
+
 > **Integration update, 2026-09-07:** Dev's `151c4a0` is merged locally.
 > Real Godot + BRAIN acceptance passed: 525 frames, 96 validated actions,
 > M02 confirmed, disconnect stop and reconnect verified. See
@@ -50,9 +54,9 @@ assume Dev's export is placed in `datasets/rocks-export/`.
 
 ```powershell
 .\.venv\Scripts\python.exe brain/rock_dataset.py datasets/rocks-export/export.jsonl datasets/rocks-v1
-.\.venv\Scripts\python.exe brain/train_rocks.py train --dataset datasets/rocks-v1/dataset.yaml --output recordings/rock-train-v1 --dry-run
-.\.venv\Scripts\python.exe brain/train_rocks.py train --dataset datasets/rocks-v1/dataset.yaml --output recordings/rock-train-v1
-.\.venv\Scripts\python.exe brain/train_rocks.py evaluate --dataset datasets/rocks-v1/dataset.yaml --weights recordings/rock-train-v1/run/weights/best.pt --output recordings/rock-test-v1
+.\.venv\Scripts\python.exe brain/train_rocks.py train --dataset datasets/rocks-v1/dataset.yaml --output C:/dev/iete-training/rock-v2 --dry-run
+.\.venv\Scripts\python.exe brain/train_rocks.py train --dataset datasets/rocks-v1/dataset.yaml --output C:/dev/iete-training/rock-v2
+.\.venv\Scripts\python.exe brain/train_rocks.py evaluate --dataset datasets/rocks-v1/dataset.yaml --weights C:/dev/iete-training/rock-v2/run/weights/best.pt --output recordings/rock-test-v2
 ```
 
 Preparation copies files into a fresh directory and allocates approximately

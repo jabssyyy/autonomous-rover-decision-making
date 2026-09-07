@@ -1,3 +1,7 @@
+> **Current Phase 3 result:** Rock detector trained on 1,500 images, held-out
+> mAP50 0.8979, installed and tested with real Godot. Novelty calibration remains
+> incomplete. See [measured results](../phase3-results.md). Older status notes below are historical.
+
 > **Windows integration update (2026-09-07):** Real BRAIN integration now passes;
 > see [phase2-integration.md](../phase2-integration.md) for tested commands.
 > Current shared config is 1x time, 0.8 m marker, 1 Wh/m drive and 1 Wh/s dwell.
