@@ -1,3 +1,8 @@
+> **Live PANEL integration, 2026-09-07:** Dev's b2e467c is merged. PANEL is
+> served at http://127.0.0.1:8000/ against the existing BRAIN (classical perception,
+> 3-second delay). Godot was left untouched. Wire/HTTP/JS checks passed; browser
+> visual check and live interrupt rehearsal remain. See [instructions](phase5-panel-integration.md).
+
 > **Current Phase 4 checkpoint, 2026-09-07:** Both 90-second stay/deviate runs
 > passed and are recorded as playable videos. Both confirmed M02. Only starting
 > energy and gamma differed. See [demo instructions and evidence](phase4-demo.md).

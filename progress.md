@@ -2,20 +2,22 @@
 
 Updated 2026-09-07. Owner: Jabin.
 
-**Current: Phase 4 paired demonstrations recorded and verified.**
+**Current: Dev's PANEL merged and connected to the existing live BRAIN.**
 
-Same BRAIN, learned models and Godot scene; only budget_start_wh/gamma differ:
-stay 210 Wh / 5, deviate 1000 Wh / 2. Each run lasted 90 seconds and confirmed
-M02. Stay ignored strong novelty and selected no rock; deviate completed an
-inspection and resumed marker driving. Full assigned mission is not claimed.
+Origin b2e467c merged locally. Static PANEL served at http://127.0.0.1:8000/;
+Wi-Fi URL http://192.168.22.70:8000/ (LAN reachability not yet tested).
+Running Godot and BRAIN were not restarted or changed. Current BRAIN uses
+classical perception and a 3-second delay, not the trained 60-second profile.
 
-Playable videos: recordings/phase4-stay.mp4 and recordings/phase4-deviate.mp4.
-Evidence, beginner explanation and launch commands: [phase4-demo.md](phase4-demo.md).
-Eight new pair-audit tests passed, both recorded contracts/arithmetic/frame checks
-passed, and both 898-frame videos decoded fully and were visually checked.
+Fixed PANEL audit v2 arithmetic, actual decision display, clock fallback and
+explicit uplink acknowledgements. Three live telemetry messages and their JPEGs
+passed validation; HTTP assets and JavaScript checks passed. Automated browser
+launch was blocked, so visual browser verification remains manual. No abort or
+halt was sent to the running rover. See [PANEL instructions](phase5-panel-integration.md).
 
-Next: Phase 5 live PANEL connection and late-interrupt rehearsal once Dev's PANEL
-is available. No PANEL code was changed. Nothing pushed.
+Phase 4 trained stay/deviate videos remain ready in recordings/phase4-*.mp4.
+Next: open PANEL, then rehearse the real delayed interrupt when appropriate.
+No code pushed.
 
 Earlier entries below are historical.
 

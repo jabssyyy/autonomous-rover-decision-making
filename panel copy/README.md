@@ -1,3 +1,9 @@
+> Current Windows launch: serve this actual `panel copy/` directory with
+> `python -m http.server 8000 --directory "panel copy"` from the repository root,
+> then open http://127.0.0.1:8000/. Runtime time compression defaults to 1.
+> Current preserved live BRAIN has a 3-second delay; clock stamps are authoritative.
+> See ../phase5-panel-integration.md. Older setup examples below are historical.
+
 # panel/ — MISSION CONTROL, EARTH SIDE
 
 The scientist's console. Three files, no build step, no npm, no CDN, no webfont —

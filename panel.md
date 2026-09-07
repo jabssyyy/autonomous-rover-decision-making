@@ -1,3 +1,8 @@
+> **Live PANEL integration, 2026-09-07:** Dev's b2e467c is merged. PANEL is
+> served at http://127.0.0.1:8000/ against the existing BRAIN (classical perception,
+> 3-second delay). Godot was left untouched. Wire/HTTP/JS checks passed; browser
+> visual check and live interrupt rehearsal remain. See [instructions](phase5-panel-integration.md).
+
 # panel.md — PANEL lane (Dev, build this SECOND)
 
 > **Phase 1 handoff:** `interface-contract.md` now specifies audit v2 and binary JPEG

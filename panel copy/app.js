@@ -30,7 +30,7 @@ const CFG = {
     const port = QS.get('port') || '8766';
     return `ws://${host}:${port}`;
   })(),
-  timeCompression: Number(QS.get('tc') || 60),   // config.yaml time_compression
+  timeCompression: Number(QS.get('tc') || 1),   // config.yaml time_compression
   fallbackDelay:   Number(QS.get('delay') || 60), // config.yaml comms_delay_real_s
   capacityWh:      Number(QS.get('cap') || 1000), // config.yaml budget_capacity_wh
   demo:            QS.get('demo') === '1',
@@ -98,6 +98,7 @@ function connect() {
   ws.onclose = () => {
     if (S.connected) { logEvent('bad', 'downlink lost'); toast('DOWNLINK LOST', 'bad'); }
     S.connected = false;
+    S.pending = null; S.pendingIdx = 0;
     setLink('bad', 'LINK LOST', `retrying ${CFG.wsUrl}`);
     scheduleReconnect();
   };
@@ -318,7 +319,8 @@ function renderCrops() {
    ───────────────────────────────────────────────────────────────────── */
 
 function decisionKind(t) {
-  if (t.decision) {                               // if BRAIN ever adds it, use it
+  const actualDecision = t.decision || (t.audit?.version === 2 ? t.audit.text.split(':', 1)[0] : null);
+  if (actualDecision) {                               // if BRAIN ever adds it, use it
     const map = {
       drive_to_target: ['COMMIT — DRIVE', 'var(--cyan)', 'drive_to_target'],
       investigate:     ['DEVIATE — INVESTIGATE', 'var(--violet)', 'investigate'],
@@ -327,8 +329,8 @@ function decisionKind(t) {
       hold:            ['HOLD', 'var(--red)', 'hold'],
       continue:        ['CONTINUE ON HEADING', 'var(--ink-dim)', 'continue'],
     };
-    const m = map[t.decision];
-    if (m) return { label: m[0], color: m[1], cls: m[2], key: t.decision };
+    const m = map[actualDecision];
+    if (m) return { label: m[0], color: m[1], cls: m[2], key: actualDecision };
   }
   const a = t.audit;
   if (!a.chosen) return { label: 'CONTINUE ON HEADING', color: 'var(--ink-dim)', cls: 'continue', key: 'continue' };
@@ -411,9 +413,9 @@ function fillCard(node, t, kind, rec) {
     const mission = c.stream === 'mission';
 
     // independent recomputation — the panel checks BRAIN's homework
-    const rawExp = (mission ? c.p : c.n) * c.c;
+    const rawExp = (mission ? c.p : (a.version === 2 ? c.k : 1) * c.n) * c.c;
     const wgtExp = mission ? c.value_raw : a.w_curiosity * c.value_raw;
-    const uExp   = c.value_weighted / c.cost_est;
+    const uExp   = c.value_weighted / (c.cost_est + (a.version === 2 ? a.eps : 0));
     const ok = close(c.value_raw, rawExp) && close(c.value_weighted, wgtExp) && close(c.U, uExp);
 
     tr.appendChild(el('td', null, c.id));
@@ -514,6 +516,7 @@ function sendUplink(command) {
   const now = Date.now();
   S.flights.push({
     command, payload,
+    issuedSim: issued,
     sentMs: now,
     landMs: now + delayReal * 1000,
     arriveSim: msg.arrives_at,
@@ -534,25 +537,14 @@ function sendUplink(command) {
 function checkFlights(t) {
   for (const fl of S.flights) {
     if (fl.state === 'applied' || fl.state === 'stale') continue;
-    if (!Number.isFinite(fl.arriveSim) || t.generated_at < fl.arriveSim) continue;
+    if (CFG.demo) continue; // Synthetic source resolves its own command callbacks.
 
-    const a = t.audit;
-    const chosen = a.chosen ? a.candidates.find((c) => c.id === a.chosen) : null;
-    const investigating = !!chosen && chosen.stream === 'curiosity';
-    let verdict = 'applied', note = 'state at arrival is consistent with the command';
-
-    if (fl.command === 'abort_investigation') {
-      if (!investigating) { verdict = 'stale'; note = 'the rover was not investigating when the command landed'; }
-      else note = 'the rover was still investigating — abort takes effect';
-    } else if (fl.command === 'force_investigate') {
-      if (!investigating) { verdict = 'stale'; note = 'the rover had already committed elsewhere'; }
-    } else if (fl.command === 'set_gamma') {
-      if (close(a.gamma, fl.payload.gamma)) { note = `γ is now ${f(a.gamma, 2)} — applied`; }
-      else { verdict = 'stale'; note = `γ still ${f(a.gamma, 2)}, requested ${f(fl.payload.gamma, 2)}`; }
-    } else if (fl.command === 'ack_report') {
-      note = t.state === 'AWAITING_UPLINK' ? 'rover still awaiting uplink' : 'rover resumed AUTONOMOUS';
-    }
-    resolveFlight(fl.command, verdict, note, fl, false);
+    // BRAIN publishes the command outcome in its delayed audit sentence.
+    // A missing investigation cannot distinguish a successful abort from a stale one.
+    const outcome = new RegExp('Uplink ' + fl.command + ' (landed stale|applied) at sim ([0-9.]+) [(]issued at ([0-9.]+)[)]').exec(t.audit.text || '');
+    if (!outcome || Math.abs(Number(outcome[3]) - fl.issuedSim) > 1) continue;
+    fl.arriveSim = Number(outcome[2]);
+    resolveFlight(fl.command, outcome[1] === 'landed stale' ? 'stale' : 'applied', outcome[0], fl, true);
   }
 }
 
@@ -572,7 +564,7 @@ function resolveFlight(command, verdict, note, fl, fromBrain) {
 
 function showStale(fl) {
   $('staleBody').innerHTML =
-    `Command <b>${fl.command}</b> was issued at rover-time <b>sim ${f(fl.arriveSim - fl.delayReal * CFG.timeCompression, 1)}</b> ` +
+    `Command <b>${fl.command}</b> was issued at rover-time <b>sim ${f(fl.issuedSim, 1)}</b> ` +
     `and reached the rover <b>${Math.round(fl.delayReal)} real seconds later</b>, at sim ${f(fl.arriveSim, 1)}.<br><br>` +
     (fl.fromBrain
       ? `BRAIN reported <b>uplink_stale</b>: ${fl.note}.<br><br>`
