@@ -40,6 +40,8 @@ def run(args):
     run_dir = sim.parent / 'runs' / out.name
     cfg = yaml.safe_load((HERE / 'brain.yaml').read_text(encoding='utf-8-sig'))
     cfg['ports'].update(host='127.0.0.1', sim=args.port, panel=args.port + 1)
+    if args.warmup_seconds is not None:
+        cfg['perception']['novelty_warmup_s'] = args.warmup_seconds
     if args.rock_weights:
         if not args.rock_weights.is_file():
             raise ValueError('candidate rock checkpoint is missing')
@@ -155,7 +157,10 @@ if __name__ == '__main__':
     parser.add_argument('--torch', action='store_true')
     parser.add_argument('--rock-weights', type=Path, help='Validate candidate weights without installing them')
     parser.add_argument('--smoke', action='store_true', help='Check live perception/actions only; omit marker/reconnect assertions')
+    parser.add_argument('--warmup-seconds', type=float, help='Test a scene warm-up profile without changing defaults')
     args = parser.parse_args()
     if args.seconds < (15 if args.smoke else 30):
         parser.error('allow at least 15 seconds for smoke or 30 for full acceptance')
+    if args.warmup_seconds is not None and args.warmup_seconds < 0:
+        parser.error('warm-up seconds cannot be negative')
     run(args)

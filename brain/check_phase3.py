@@ -39,6 +39,15 @@ class NoveltyDatasetTests(unittest.TestCase):
         self.rows[2]['group'] = self.rows[0]['group']; self.save()
         with self.assertRaises(ValueError): inspect(self.manifest)
 
+    def test_matched_evaluation_group_allowed(self):
+        self.rows[3]['group'] = self.rows[2]['group']; self.save()
+        self.assertEqual(len(inspect(self.manifest)), 4)
+
+    def test_evaluation_then_memory_leakage(self):
+        self.rows[0]['group'] = self.rows[3]['group']
+        self.rows.reverse(); self.save()
+        with self.assertRaises(ValueError): inspect(self.manifest)
+
     def test_duplicate_pixels(self):
         (self.root / '2.png').write_bytes((self.root / '0.png').read_bytes())
         with self.assertRaises(ValueError): inspect(self.manifest)

@@ -32,7 +32,7 @@ def run(args):
         with (output / (group + '.log')).open('w', encoding='utf-8') as log:
             subprocess.run([str(args.godot.resolve()), '--path', str(args.sim.resolve()),
                             '--resolution', '640x480', '--', '--lowfx', '--label=' + str(args.frames),
-                            '--label-name=' + name, '--config=' + str(config)],
+                            '--label-name=' + name, '--config=' + str(config)] + (['--novelty-capture'] if args.novelty else []),
                            stdout=log, stderr=subprocess.STDOUT, startupinfo=startup, timeout=180, check=True)
         source = args.sim.resolve().parent / 'runs' / name
         rows = inspect_export(source / 'export.jsonl')
@@ -55,6 +55,7 @@ if __name__ == '__main__':
     parser.add_argument('--groups', type=int, default=10)
     parser.add_argument('--frames', type=int, default=150)
     parser.add_argument('--seed', type=int, default=20261001)
+    parser.add_argument('--novelty', action='store_true', help='Balanced close common/unusual views at runtime lighting')
     args = parser.parse_args()
     if args.groups < 1 or args.frames < 1:
         parser.error('groups and frames must be positive')

@@ -1,3 +1,9 @@
+> **Current update, 2026-09-07:** BRAIN novelty validation and a live investigation/resumption
+> sequence are complete for the tested simulator profile (confirmation AUC 0.8326;
+> 15-second warm-up). See [novelty results and limits](phase3-novelty-calibration.md).
+> Paired stay/deviate missions and browser PANEL remain pending. Earlier status
+> notes below describe previous checkpoints.
+
 # Phase 3 novelty diagnostic - 2026-09-07
 
 The first diagnostic on actual Godot scene images did **not** separate annotated unusual rocks from common rocks. Novelty calibration remains incomplete; runtime parameters were not changed.

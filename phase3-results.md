@@ -1,3 +1,9 @@
+> **Current update, 2026-09-07:** BRAIN novelty validation and a live investigation/resumption
+> sequence are complete for the tested simulator profile (confirmation AUC 0.8326;
+> 15-second warm-up). See [novelty results and limits](phase3-novelty-calibration.md).
+> Paired stay/deviate missions and browser PANEL remain pending. Earlier status
+> notes below describe previous checkpoints.
+
 # Phase 3 results: learned rock detector
 
 2026-09-07. **Detector trained, evaluated and installed. Novelty calibration remains open.**

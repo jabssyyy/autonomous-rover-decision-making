@@ -91,21 +91,29 @@ func _render_set(count: int) -> void:
 	var t0 := Time.get_ticks_msec()
 
 	for i in count:
+		var focus := ""
+		var novelty_capture: bool = _main.args.has("novelty-capture")
 		var p := Vector2(rng.randf_range(-58.0, 58.0), rng.randf_range(-58.0, 58.0))
 		var heading := rng.randf_range(0.0, 360.0)
 		# Most captures approach actual boulders; the rest sample wider backgrounds.
-		if i % 4 != 0 and not _targets.is_empty():
-			var target: Node3D = _targets[rng.randi_range(0, _targets.size() - 1)]["node"]
+		if (i % 4 != 0 or novelty_capture) and not _targets.is_empty():
+			var pool := _targets
+			if novelty_capture:
+				var appearance := "common" if i % 2 == 0 else "unusual"
+				pool = _targets.filter(func(t): return t["appearance"] == appearance)
+			var target: Node3D = pool[rng.randi_range(0, pool.size() - 1)]["node"]
+			focus = str(target.name)
 			var centre := Vector2(target.global_position.x, target.global_position.z)
 			var angle := rng.randf_range(0.0, TAU)
-			p = centre + Vector2(cos(angle), sin(angle)) * rng.randf_range(5.0, 28.0)
+			p = centre + Vector2(cos(angle), sin(angle)) * rng.randf_range(5.0, 12.0 if novelty_capture else 28.0)
 			var to := centre - p
 			heading = rad_to_deg(atan2(to.x, -to.y)) + rng.randf_range(-22.0, 22.0)
 		rover.global_position = Vector3(p.x, terrain.ground_y(p.x, p.y) + 0.3, p.y)
 		rover.heading_deg = heading
 		rover.rotation.y = -deg_to_rad(rover.heading_deg)
 		# vary the light: a detector trained under one sun angle falls over under another
-		sun.rotation_degrees = Vector3(rng.randf_range(-62.0, -18.0), rng.randf_range(0.0, 360.0), 0.0)
+		if not novelty_capture:
+			sun.rotation_degrees = Vector3(rng.randf_range(-62.0, -18.0), rng.randf_range(0.0, 360.0), 0.0)
 
 		# The transform has to reach the RemoteTransform3D, then the camera, then the
 		# renderer, BEFORE the readback. Skip this and you write labels from the
@@ -126,7 +134,7 @@ func _render_set(count: int) -> void:
 		if f:
 			f.store_string("\n".join(lines))
 			f.close()
-		annotations.store_line(JSON.stringify({"image": "images/" + stem + ".jpg", "objects": _last_objects}))
+		annotations.store_line(JSON.stringify({"image": "images/" + stem + ".jpg", "focus": focus, "objects": _last_objects}))
 		manifest.store_line(JSON.stringify({"image": "images/" + stem + ".jpg", "label": "labels/" + stem + ".txt", "group": group}))
 		written += 1
 		boxed += lines.size()

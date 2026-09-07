@@ -1,3 +1,9 @@
+> **Current update, 2026-09-07:** BRAIN novelty validation and a live investigation/resumption
+> sequence are complete for the tested simulator profile (confirmation AUC 0.8326;
+> 15-second warm-up). See [novelty results and limits](phase3-novelty-calibration.md).
+> Paired stay/deviate missions and browser PANEL remain pending. Earlier status
+> notes below describe previous checkpoints.
+
 > **Current Phase 3 result:** Rock detector trained on 1,500 images, held-out
 > mAP50 0.8979, installed and tested with real Godot. Novelty calibration remains
 > incomplete. See [measured results](phase3-results.md). Older status notes below are historical.

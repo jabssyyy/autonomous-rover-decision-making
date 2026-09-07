@@ -36,9 +36,10 @@ def inspect(manifest):
         identity = hashlib.sha256(str(pixels.shape).encode() + pixels.tobytes()).hexdigest()
         if identity in seen:
             raise ValueError('duplicate crop')
-        if row['group'] in groups and groups[row['group']] != row['role']:
-            raise ValueError('capture group crosses roles')
-        seen.add(identity); groups[row['group']] = row['role']
+        partition = 'memory' if row['role'] == 'memory' else 'evaluation'
+        if row['group'] in groups and groups[row['group']] != partition:
+            raise ValueError('capture group crosses memory and evaluation')
+        seen.add(identity); groups[row['group']] = partition
         rows.append({**row, 'sha256': digest(path), 'pixels': pixels})
     if {r['role'] for r in rows} != {'memory', 'familiar', 'novel'}:
         raise ValueError('all three roles need crops')

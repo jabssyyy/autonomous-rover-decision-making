@@ -22,5 +22,5 @@
     "median": 235.2,
     "p95": 328.2699999999992
   },
-  "status": "Installed after held-out test, visual review and short live check. Novelty calibration remains incomplete."
+  "status": "Installed after held-out test and live checks. BRAIN novelty/discovery validation is documented in phase3-novelty-calibration.md; full mission and PANEL work remain."
 }

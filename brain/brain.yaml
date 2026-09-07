@@ -15,7 +15,7 @@ perception:
   device: 'cuda:0'
   embedder: auto
   novelty_scale: 0.1
-  novelty_warmup_s: 60.0
+  novelty_warmup_s: 15.0  # Dev scene: define common appearances before the occluded outcrop emerges
   novelty_commit_delay_s: 30.0
   anomaly_threshold: 0.45
   memory_cap: 512

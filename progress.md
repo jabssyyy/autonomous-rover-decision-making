@@ -2,18 +2,21 @@
 
 Updated 2026-09-07. Owner: Jabin.
 
-**Current: Phase 3 rock detector trained, tested and installed; novelty calibration open.**
+**Current: Phase 3 detector and BRAIN novelty/discovery validation completed for the tested simulator profile.**
 
-1,500 images, 10 layout groups, 15 YOLO26n epochs. Held-out test: mAP50 0.8979,
-precision 0.9024, recall 0.8288. Local weights: brain/weights/rock.pt; hash and
-evidence in brain/rock-model.json. Learned Godot smoke passed: 100 frames,
-19 actions, aruco+yolo+resnet18. Classical fallback remains available.
-60 Python checks pass. See [phase3-results.md](phase3-results.md).
+The installed detector has held-out mAP50 0.8979. Broader, matched-layout novelty
+confirmation achieved rank AUC 0.8326 (70 familiar / 46 unusual views, 74 memory
+crops). ResNet18 and the score thresholds remain unchanged. The simulator profile
+now uses the tested 15-second warm-up. A 75-second learned Godot run investigated
+R36, completed its dwell and resumed driving toward M02. This was not a complete
+mission or proof of scientific interest. Only three unusual mesh families were
+available; repeated views are correlated.
 
-Novelty diagnostic did not separate the small sample: AUC0.4609, both medians
-zero, 64 familiar and only 2 unusual objects. Runtime novelty settings unchanged.
-Next: broader novelty capture/calibration. Full Phase 3, browser PANEL and staged
-stay/deviate runs remain incomplete. Stop for Jabin review. Nothing pushed.
+See [novelty and live evidence](phase3-novelty-calibration.md) and
+[detector results](phase3-results.md). Next: paired stay/deviate demonstration and
+Dev's browser PANEL integration. Stop for Jabin review. Nothing pushed.
+All 67 Python regression checks, the balanced dataset audit and recorded live
+discovery acceptance passed.
 
 Earlier entries below are historical.
 
