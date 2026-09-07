@@ -37,6 +37,7 @@ def run(args):
     out = HERE.parent / 'recordings' / ('godot-acceptance-' + datetime.now().strftime('%Y%m%d-%H%M%S'))
     out.mkdir(parents=True)
     sim = args.sim.resolve()
+    shared = Path(getattr(args, 'config', HERE / 'config.yaml')).resolve()
     run_dir = sim.parent / 'runs' / out.name
     cfg = yaml.safe_load((HERE / 'brain.yaml').read_text(encoding='utf-8-sig'))
     cfg['ports'].update(host='127.0.0.1', sim=args.port, panel=args.port + 1)
@@ -63,7 +64,7 @@ def run(args):
 
     def start_brain(name):
         command = [sys.executable, '-u', str(HERE / 'main.py'), '--brain', str(out / 'brain.yaml'),
-                   '--config', str(HERE / 'config.yaml'), '--delay', '3',
+                   '--config', str(shared), '--delay', str(getattr(args, 'delay', 3)),
                    '--record-dir', str(out / name), '--tag', name]
         if not args.torch:
             command.append('--no-torch')
@@ -81,7 +82,7 @@ def run(args):
             time.sleep(.1)
         godot = launch('godot', [str(args.godot.resolve()), '--path', str(sim), '--resolution', '960x540',
                                '--', '--brain=ws://127.0.0.1:' + str(args.port),
-                               '--config=' + str(HERE / 'config.yaml'), '--record=' + out.name,
+                               '--config=' + str(shared), '--record=' + out.name,
                                '--lowfx', '--exitafter=' + str(args.seconds)])
         print('Evidence:', out, flush=True)
         deadline = time.monotonic() + args.seconds + 90
@@ -101,6 +102,14 @@ def run(args):
             raise RuntimeError('Godot did not finish before the integration timeout')
         if godot.returncode:
             raise RuntimeError('Godot exited with an error; inspect godot.log')
+        drain = getattr(args, 'drain_seconds', 0)
+        if drain:
+            print('Draining delayed telemetry for', drain, 'real seconds', flush=True)
+            until = time.monotonic() + drain
+            while time.monotonic() < until:
+                if brain.poll() is not None:
+                    raise RuntimeError('BRAIN exited before delayed telemetry drained')
+                time.sleep(.2)
     finally:
         for process in reversed(processes):
             if process.poll() is None:
@@ -146,12 +155,16 @@ def run(args):
               'final_budget_wh': observed[-1]['budget']['remaining']}
     (out / 'result.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, indent=2))
+    return out
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--godot', required=True, type=Path)
     parser.add_argument('--sim', required=True, type=Path)
+    parser.add_argument('--config', type=Path, default=HERE / 'config.yaml')
+    parser.add_argument('--delay', type=float, default=3)
+    parser.add_argument('--drain-seconds', type=float, default=0)
     parser.add_argument('--port', type=int, default=19765)
     parser.add_argument('--seconds', type=int, default=105)
     parser.add_argument('--torch', action='store_true')

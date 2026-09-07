@@ -2,21 +2,20 @@
 
 Updated 2026-09-07. Owner: Jabin.
 
-**Current: Phase 3 detector and BRAIN novelty/discovery validation completed for the tested simulator profile.**
+**Current: Phase 4 paired demonstrations recorded and verified.**
 
-The installed detector has held-out mAP50 0.8979. Broader, matched-layout novelty
-confirmation achieved rank AUC 0.8326 (70 familiar / 46 unusual views, 74 memory
-crops). ResNet18 and the score thresholds remain unchanged. The simulator profile
-now uses the tested 15-second warm-up. A 75-second learned Godot run investigated
-R36, completed its dwell and resumed driving toward M02. This was not a complete
-mission or proof of scientific interest. Only three unusual mesh families were
-available; repeated views are correlated.
+Same BRAIN, learned models and Godot scene; only budget_start_wh/gamma differ:
+stay 210 Wh / 5, deviate 1000 Wh / 2. Each run lasted 90 seconds and confirmed
+M02. Stay ignored strong novelty and selected no rock; deviate completed an
+inspection and resumed marker driving. Full assigned mission is not claimed.
 
-See [novelty and live evidence](phase3-novelty-calibration.md) and
-[detector results](phase3-results.md). Next: paired stay/deviate demonstration and
-Dev's browser PANEL integration. Stop for Jabin review. Nothing pushed.
-All 67 Python regression checks, the balanced dataset audit and recorded live
-discovery acceptance passed.
+Playable videos: recordings/phase4-stay.mp4 and recordings/phase4-deviate.mp4.
+Evidence, beginner explanation and launch commands: [phase4-demo.md](phase4-demo.md).
+Eight new pair-audit tests passed, both recorded contracts/arithmetic/frame checks
+passed, and both 898-frame videos decoded fully and were visually checked.
+
+Next: Phase 5 live PANEL connection and late-interrupt rehearsal once Dev's PANEL
+is available. No PANEL code was changed. Nothing pushed.
 
 Earlier entries below are historical.
 

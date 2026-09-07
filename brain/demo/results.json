@@ -1,0 +1,95 @@
+{
+  "phase": 4,
+  "status": "paired recorded behavior passed",
+  "profiles": {
+    "budget_start_wh": {
+      "stay": 210.0,
+      "deviate": 1000.0
+    },
+    "gamma": {
+      "stay": 5.0,
+      "deviate": 2.0
+    }
+  },
+  "runs": {
+    "stay": {
+      "observations": 450,
+      "actions": 85,
+      "budget_start_wh": 210.0,
+      "budget_end_wh": 164.12,
+      "budget_spent_wh": 45.88,
+      "confirmed_markers": [
+        "M02"
+      ],
+      "max_novelty": 0.908,
+      "record_sha256": {
+        "observations.jsonl": "c8529c3b02a7c1ed178db95131ffc70eab2738ac47316f3086db5619f751fb5f",
+        "actions.jsonl": "6edaa5e0ef82bad55b76b4116110eb118bdd50dcde664598ca06e518c5393ed3"
+      },
+      "video": {
+        "recording": "C:\\dev\\iete-integration\\runs\\godot-acceptance-20260907-162347",
+        "video": "C:\\Users\\Jabin M\\OneDrive\\Documents\\IETE'26\\recordings\\phase4-stay.mp4",
+        "title": "STAY | 210 Wh | gamma 5 | same world and BRAIN",
+        "fps": 10.0,
+        "frames": 898,
+        "decoded_frames": 898,
+        "source_start_s": 0.27,
+        "source_end_s": 90.0,
+        "video_duration_s": 89.8,
+        "alignment": "Last observation/action at or before video simulation timestamp; action receipt latency not recorded.",
+        "observations_sha256": "c8529c3b02a7c1ed178db95131ffc70eab2738ac47316f3086db5619f751fb5f",
+        "actions_sha256": "6edaa5e0ef82bad55b76b4116110eb118bdd50dcde664598ca06e518c5393ed3",
+        "video_sha256": "1aedac539512b406dcee6cf5d755be21210b01ae6a7cad26267455e81b88d847"
+      }
+    },
+    "deviate": {
+      "observations": 450,
+      "actions": 81,
+      "budget_start_wh": 1000.0,
+      "budget_end_wh": 953.44,
+      "budget_spent_wh": 46.56,
+      "confirmed_markers": [
+        "M02"
+      ],
+      "max_novelty": 0.981,
+      "record_sha256": {
+        "observations.jsonl": "5026a156b37860fe2180394a59e52ea55edb4c7d50acd569003a8d8124908c64",
+        "actions.jsonl": "c08dc044e95f906b1988c64ad22bb0cd113c2517ac2d154f2262922abc060708"
+      },
+      "video": {
+        "recording": "C:\\dev\\iete-integration\\runs\\godot-acceptance-20260907-162605",
+        "video": "C:\\Users\\Jabin M\\OneDrive\\Documents\\IETE'26\\recordings\\phase4-deviate.mp4",
+        "title": "DEVIATE | 1000 Wh | gamma 2 | same world and BRAIN",
+        "fps": 10.0,
+        "frames": 898,
+        "decoded_frames": 898,
+        "source_start_s": 0.23,
+        "source_end_s": 90.01,
+        "video_duration_s": 89.8,
+        "alignment": "Last observation/action at or before video simulation timestamp; action receipt latency not recorded.",
+        "observations_sha256": "5026a156b37860fe2180394a59e52ea55edb4c7d50acd569003a8d8124908c64",
+        "actions_sha256": "c08dc044e95f906b1988c64ad22bb0cd113c2517ac2d154f2262922abc060708",
+        "video_sha256": "2373ecf1b3457db161837e272d6c2e8d17606326d890268180d41e3a35a1cb34"
+      }
+    }
+  },
+  "discovery": {
+    "observations": 450,
+    "actions": 81,
+    "warmup_s": 15.0,
+    "investigated": "R34",
+    "investigate_start_s": 15.62,
+    "complete_s": 21.41,
+    "dwell_motion_m": 0.0,
+    "mission_resumed_s": 22.6,
+    "mission_target": "M02",
+    "limitation": "Appearance novelty only; no ground-truth object identity or scientific value claim"
+  },
+  "limitations": [
+    "Same configured world seed and initial pose/camera/mission; paths and later frames diverge.",
+    "These are two live behavior demonstrations, not a deterministic causal benchmark.",
+    "Appearance novelty does not establish scientific value or ground-truth object identity.",
+    "No claim that all assigned markers or the complete mission were completed.",
+    "Recorded budget difference includes differing paths, dwell, and recording durations."
+  ]
+}

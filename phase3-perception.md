@@ -1,3 +1,8 @@
+> **Current Phase 4 checkpoint, 2026-09-07:** Both 90-second stay/deviate runs
+> passed and are recorded as playable videos. Both confirmed M02. Only starting
+> energy and gamma differed. See [demo instructions and evidence](phase4-demo.md).
+> Dev owns PANEL; the next phase is live PANEL/late-interrupt rehearsal.
+
 > **Current update, 2026-09-07:** BRAIN novelty validation and a live investigation/resumption
 > sequence are complete for the tested simulator profile (confirmation AUC 0.8326;
 > 15-second warm-up). See [novelty results and limits](phase3-novelty-calibration.md).

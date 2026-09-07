@@ -21,11 +21,11 @@ from pathlib import Path
 
 CFG = Path(__file__).resolve().parents[1] / "brain" / "config.yaml"
 
-# Starting points, not gospel. brain.md S5.3 tunes these against the real utilities;
-# SIM only needs the budget to be the thing that changes.
+# Phase 4 measured profiles; keep in sync with brain/demo/*.yaml.
+# The same world and implementation are used in both runs.
 PRESETS = {
-    "deviate": {"budget_start_wh": 1000.0, "gamma": 1.0},
-    "stay": {"budget_start_wh": 420.0, "gamma": 3.0},
+    "deviate": {"budget_start_wh": 1000.0, "gamma": 2.0},
+    "stay": {"budget_start_wh": 210.0, "gamma": 5.0},
 }
 KEYS = ("budget_start_wh", "gamma")
 
