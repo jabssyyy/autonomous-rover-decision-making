@@ -154,7 +154,7 @@ class Probe:
             px = float(np.linalg.norm(hit[0] - hit[1]))
             self.best_px = max(self.best_px, px)
             bearing = math.degrees(math.atan2(cx - w / 2.0, f_px))
-            est_range = f_px * self.cfg["marker_width_m"] / max(px, 1e-3)
+            est_range = f_px * self.cfg["marker_side_m"] / max(px, 1e-3)
             true_range = math.hypot(hdr["pose"]["x"] - MARKER_TRUTH[active][0],
                                     hdr["pose"]["y"] - MARKER_TRUTH[active][1])
             conf = min(0.99, 0.4 + px / 120.0)
@@ -196,7 +196,7 @@ async def main() -> None:
     probe = Probe(cfg, args.target)
     async with serve(probe.handler, "127.0.0.1", args.port, max_size=8 * 1024 * 1024):
         log.info("aruco_probe on ws://127.0.0.1:%d -- works the assigned marker list, "
-                 "starting at %s (pattern %.2f m)", args.port, args.target, cfg["marker_width_m"])
+                 "starting at %s (pattern %.2f m)", args.port, args.target, cfg["marker_side_m"])
         await asyncio.Future()
 
 

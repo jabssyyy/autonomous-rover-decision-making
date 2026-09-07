@@ -1,13 +1,14 @@
-> Phase 3 update (2026-09-07): frozen-memory novelty evaluation tooling is implemented
-> alongside detector training preparation. See [Phase 3 status](phase3-perception.md).
-> Actual scene training/calibration and Dev's PANEL remain pending; no GitHub pull
-> until Jabin announces Dev's update.
+> **Integration update, 2026-09-07:** Dev's `151c4a0` is merged locally.
+> Real Godot + BRAIN acceptance passed: 525 frames, 96 validated actions,
+> M02 confirmed, disconnect stop and reconnect verified. See
+> [phase2-integration.md](phase2-integration.md). Initial marker integration
+> is established; all-marker missions, browser PANEL and trained rocks remain pending.
 
 # Rock detector: offline training preparation
 
 Updated 2026-09-07. **Preparation implemented and tested; no detector trained.**
 Jabin authorized independent BRAIN work while Dev updates GitHub. Phase 2 Godot
-integration remains pending. Do not fetch/pull again until Jabin reports the update.
+initial marker integration now passes. Dev's exporter still needs the adaptation below.
 This is preparation for Phase 3, not completion of Phase 3.
 
 ## What this adds to the brain

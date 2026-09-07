@@ -55,7 +55,7 @@ static func forward_from_heading(h_deg: float) -> Vector3:
 
 func build(cfg: Dictionary, terrain_ref: Terrain) -> void:
 	terrain = terrain_ref
-	max_speed = SimConfig.f(cfg, "rover_max_speed_mps")
+	max_speed = SimConfig.f(cfg, "max_speed_m_per_s")
 	yaw_rate_dps = SimConfig.f(cfg, "rover_yaw_rate_dps")
 	hazard_stop_m = SimConfig.f(cfg, "hazard_stop_m")
 	ray_len = SimConfig.f(cfg, "hazard_ray_len_m")

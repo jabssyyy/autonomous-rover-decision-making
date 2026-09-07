@@ -1,7 +1,8 @@
-> Phase 3 update (2026-09-07): frozen-memory novelty evaluation tooling is implemented
-> alongside detector training preparation. See [Phase 3 status](phase3-perception.md).
-> Actual scene training/calibration and Dev's PANEL remain pending; no GitHub pull
-> until Jabin announces Dev's update.
+> **Integration update, 2026-09-07:** Dev's `151c4a0` is merged locally.
+> Real Godot + BRAIN acceptance passed: 525 frames, 96 validated actions,
+> M02 confirmed, disconnect stop and reconnect verified. See
+> [phase2-integration.md](phase2-integration.md). Initial marker integration
+> is established; all-marker missions, browser PANEL and trained rocks remain pending.
 
 # novelty.md — the core idea (design source of truth)
 

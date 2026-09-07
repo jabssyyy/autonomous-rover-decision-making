@@ -1,8 +1,9 @@
-﻿# Phase 3: perception upgrade
+# Phase 3: perception upgrade
 
-Status 2026-09-07: BRAIN tooling implemented; scene-dependent work pending.
-Jabin requested Phase 3 while Dev prepares GitHub. Do not fetch/pull until Jabin
-announces the update. Phase 2 remains unverified; Phase 3 is not yet complete.
+Status 2026-09-07: Dev's SIM is merged and initial marker integration passes.
+Phase 3 tooling exists; real training and scene calibration are still pending.
+Dev's exporter needs single-class rock labels and independent grouped manifests
+before using the prepared training commands. See [Phase 2](phase2-integration.md).
 
 ## What this adds
 
@@ -63,4 +64,4 @@ not accuracy on rocks. No real scene calibration or YOLO training has run.
 Pending: roughly 1,500 labeled SIM frames, real YOLO training and held-out metrics,
 visual label review, scene-based novelty calibration, approved weight installation
 and live detection/fallback checks. Dev's browser PANEL is also pending and remains
-his lane. Stop after this BRAIN-side increment until Jabin supplies the update/data.
+his lane. Resume with exporter adaptation at the next Phase 3 increment.

@@ -58,12 +58,14 @@ func observation(header: Dictionary, jpeg: PackedByteArray) -> void:
 	row["_frame_ref"] = ref
 	row["_bytes"] = jpeg.size()
 	_obs.store_line(JSON.stringify(row))
+	_obs.flush()
 	frames += 1
 
 func action(a: Dictionary) -> void:
 	if not active:
 		return
 	_act.store_line(JSON.stringify(a))
+	_act.flush()
 	actions += 1
 
 func finish(summary: Dictionary) -> void:

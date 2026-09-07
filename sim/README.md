@@ -1,3 +1,10 @@
+> **Windows integration update (2026-09-07):** Real BRAIN integration now passes;
+> see [phase2-integration.md](../phase2-integration.md) for tested commands.
+> Current shared config is 1x time, 0.8 m marker, 1 Wh/m drive and 1 Wh/s dwell.
+> Older Mac results/settings below are historical. Current runtime uses audit v2,
+> a 3-second committed marker dwell, and disconnect/command-timeout stops.
+> The labeller below still emits three classes; adapt it before rock-only training.
+
 # SIM — Godot 4.7.2 Mars rover simulator
 
 The world half of the project. Renders Mars, drives the rover, owns the budget, and

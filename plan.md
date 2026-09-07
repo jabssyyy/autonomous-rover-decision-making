@@ -1,22 +1,10 @@
-> Phase 3 update (2026-09-07): frozen-memory novelty evaluation tooling is implemented
-> alongside detector training preparation. See [Phase 3 status](phase3-perception.md).
-> Actual scene training/calibration and Dev's PANEL remain pending; no GitHub pull
-> until Jabin announces Dev's update.
+> **Integration update, 2026-09-07:** Dev's `151c4a0` is merged locally.
+> Real Godot + BRAIN acceptance passed: 525 frames, 96 validated actions,
+> M02 confirmed, disconnect stop and reconnect verified. See
+> [phase2-integration.md](phase2-integration.md). Initial marker integration
+> is established; all-marker missions, browser PANEL and trained rocks remain pending.
 
 # plan.md — build plan, phase by phase
-
-> **Current status, 2026-09-07:** Jabin's Phase 1 BRAIN is implemented and tested.
-> See [progress.md](progress.md): 27 Phase 1 tests, 6 foundation tests, pretrained
-> GPU loop, delayed gamma uplink, and full 60-second downlink pass. Dev's SIM/PANEL
-> and real Godot integration remain unverified. Phase 2 preparation has started,
-> but the Godot project is absent from this checkout and fetched remote. Awaiting
-> Dev's GitHub update, which Jabin will announce; see `phase2-integration.md`.
-> Phase 2 is not complete. Jabin authorized independent training preparation:
-> dataset validation/splitting and train/evaluate CLIs now exist with 12 passing
-> offline checks; see `rock-training.md`. Actual Phase 3 training awaits exports.
-> `brain.md` and `interface-contract.md` specify audit v2, 1x time, and paired 5 Hz frames.
-> Work one phase at a time, update the relevant Markdown files, explain it to Jabin
-> in beginner-friendly terms, and stop before starting the next phase.
 
 **v1 · 2026-09-07** · Master build plan for IETE Inception '26, PS 04.1.
 **Read `context-iete.md` for the research, `novelty.md` for the idea, `interface-contract.md` for the schemas.**

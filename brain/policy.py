@@ -170,7 +170,7 @@ def decide(res, st, cfg, pol):
         st.mode, st.last_report_sim, chosen, decision = 'REPORTING', t, None, 'report'
     elif chosen:
         item = chosen['_item']
-        if chosen['id'] not in visible and chosen['_range'] <= pol['investigate_range_m']:
+        if item['kind'] != 'marker' and chosen['id'] not in visible and chosen['_range'] <= pol['investigate_range_m']:
             chosen = None
             notes.append('Remembered target is nearby: survey to visually reacquire before acting.')
         elif item['kind'] != 'marker' and chosen['_range'] <= pol['investigate_range_m']:

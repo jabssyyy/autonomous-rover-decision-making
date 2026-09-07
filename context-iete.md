@@ -1,25 +1,13 @@
-> Phase 3 update (2026-09-07): frozen-memory novelty evaluation tooling is implemented
-> alongside detector training preparation. See [Phase 3 status](phase3-perception.md).
-> Actual scene training/calibration and Dev's PANEL remain pending; no GitHub pull
-> until Jabin announces Dev's update.
+> **Integration update, 2026-09-07:** Dev's `151c4a0` is merged locally.
+> Real Godot + BRAIN acceptance passed: 525 frames, 96 validated actions,
+> M02 confirmed, disconnect stop and reconnect verified. See
+> [phase2-integration.md](phase2-integration.md). Initial marker integration
+> is established; all-marker missions, browser PANEL and trained rocks remain pending.
 
 # context.md — IETE Inception '26 Hackathon (master)
 
 **Last updated:** 2026-09-07
 
-> **Execution status:** Jabin's Phase 1 BRAIN is implemented and tested. Read
-> [progress.md](progress.md), [brain.md](brain.md), and [interface-contract.md](interface-contract.md)
-> for current behavior: audit v2, curiosity scale 10, staged memory, reserve checks,
-> commitment, pretrained GPU embeddings, 1x physics, and paired 5 Hz observations.
-> 27 Phase 1 tests and 6 foundation tests pass; full downlink measured 60.001–60.007 s.
-> Phase 2 preparation started, but the Godot project is missing from the checkout
-> and fetched remote. Awaiting Dev's GitHub update announcement from Jabin;
-> see `phase2-integration.md`. Independent rock-training preparation is implemented
-> with 12 passing offline checks; see `rock-training.md`. No real training ran.
-> Godot runtime checks and the browser PANEL remain unverified.
-> The older design statements below include superseded details; distinguish intended
-> behavior from implementation using the progress guide. Update the relevant docs
-> and explain each completed phase clearly before proceeding to the next one.
 **Changelog:**
 - v1 — initial capture (problem understanding + research base)
 - v2 — verification pass vs primary sources (RAD750 133→200 MHz; AEGIS acronym; 93%/24% verbatim; "256→327" traced to a journalist misread; +4 verified facts)

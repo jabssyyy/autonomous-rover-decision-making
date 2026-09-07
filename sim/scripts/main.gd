@@ -50,6 +50,10 @@ var _last_distance := 0.0
 var _dump_requested := false
 var _wall_s := 0.0
 var _frames_counted := 0
+var _last_action_wall := -100.0
+var _last_action_seq := -1
+var _confirm_label := ""
+var _confirm_elapsed := 0.0
 
 func _ready() -> void:
 	_parse_args()
@@ -94,6 +98,9 @@ func _ready() -> void:
 	rig.name = "CameraRig"
 	add_child(rig)
 	rig.build(canvas, rover.cam_mount, cfg)
+	var left_ray := rig.cam.project_local_ray_normal(Vector2(0, 240))
+	var right_ray := rig.cam.project_local_ray_normal(Vector2(640, 240))
+	print("INTEGRATION horizontal FOV: %.3f" % rad_to_deg(left_ray.angle_to(right_ray)))
 
 	debug_view = DebugView.new()
 	debug_view.name = "DebugView"
@@ -111,6 +118,9 @@ func _ready() -> void:
 		link.url = args["brain"]
 	add_child(link)
 	link.action_received.connect(_on_action)
+	link.link_changed.connect(func(connected: bool) -> void:
+		if not connected:
+			_safe_stop("BRAIN disconnected"))
 
 	if args.has("record"):
 		recorder = RunRecorder.new()
@@ -122,7 +132,7 @@ func _ready() -> void:
 
 	var t := Timer.new()
 	t.name = "CaptureTimer"
-	t.wait_time = 1.0 / maxf(1.0, SimConfig.f(cfg, "capture_rate_hz"))
+	t.wait_time = 1.0 / maxf(1.0, SimConfig.f(cfg, "observation_rate_hz"))
 	t.autostart = true
 	t.timeout.connect(_on_capture_tick)
 	add_child(t)
@@ -140,7 +150,7 @@ func _ready() -> void:
 
 	print("SIM ready | camera %dx%d hfov %.0f KEEP_WIDTH | %.0f Hz capture | budget %.0f/%.0f Wh | seed %d"
 		% [SimConfig.i(cfg, "camera_w"), SimConfig.i(cfg, "camera_h"),
-		SimConfig.f(cfg, "camera_hfov_deg"), SimConfig.f(cfg, "capture_rate_hz"),
+		SimConfig.f(cfg, "camera_hfov_deg"), SimConfig.f(cfg, "observation_rate_hz"),
 		budget, capacity, SimConfig.i(cfg, "world_seed")])
 
 func _parse_args() -> void:
@@ -207,6 +217,10 @@ func _build_environment() -> void:
 # ----------------------------------------------------------------- main loop
 func _process(delta: float) -> void:
 	_wall_s += delta
+	if args.has("exitafter") and _wall_s >= float(args["exitafter"]):
+		get_tree().quit()
+	if not manual and (not link.connected or _wall_s - _last_action_wall > 2.5 or budget <= 0.0):
+		_safe_stop("waiting for a fresh BRAIN command")
 	_frames_counted += 1
 	var d_sim := delta * time_compression
 	sim_time += d_sim
@@ -214,7 +228,7 @@ func _process(delta: float) -> void:
 		dwell_sim_s += d_sim
 	if labeller == null:          # labelling teleports the rover; mission logic must not react
 		_charge_budget(d_sim)
-		_confirm_markers()
+		_confirm_markers(d_sim)
 	_drive_god_cam(delta)
 	_manual_drive(delta)
 	debug_view.investigating = decision == "investigate"
@@ -228,16 +242,38 @@ func _charge_budget(d_sim: float) -> void:
 	_last_distance = rover.distance_travelled
 	budget -= SimConfig.f(cfg, "drive_rate_wh_per_m") * moved
 	budget -= SimConfig.f(cfg, "idle_rate_wh_per_s") * d_sim
-	if decision == "investigate":
-		budget -= SimConfig.f(cfg, "dwell_wh_investigate") * d_sim
+	if decision == "investigate" or _confirm_label != "":
+		budget -= SimConfig.f(cfg, "dwell_rate_wh_per_s") * d_sim
 	budget = clampf(budget, 0.0, capacity)
 
-func _confirm_markers() -> void:
+func _safe_stop(reason: String) -> void:
+	rover.command(rover.heading_deg, 0.0)
+	decision = "hold"
+	state = "AWAITING_UPLINK"
+	target_label = ""
+	dwell_sim_s = 0.0
+	_confirm_label = ""
+	_confirm_elapsed = 0.0
+	audit_text = reason
+
+func _confirm_markers(d_sim: float) -> void:
 	# Ground truth, and legitimately SIM's call: a real rover knows it reached a
 	# waypoint from its own mission state, not by being told what is in the frame.
 	var hit := world.marker_within(rover.global_position, SimConfig.f(cfg, "arrive_range_m"))
-	if hit != "" and hit in assigned and not (hit in confirmed):
+	if hit == "" or hit != target_label or not (hit in assigned) or hit in confirmed or decision != "drive_to_target" or manual:
+		_confirm_label = ""
+		_confirm_elapsed = 0.0
+		return
+	if _confirm_label != hit:
+		_confirm_label = hit
+		_confirm_elapsed = 0.0
+	else:
+		_confirm_elapsed += d_sim
+	rover.command(rover.heading_deg, 0.0)
+	if _confirm_elapsed >= SimConfig.f(cfg, "confirm_dwell_sim_s"):
 		confirmed.append(hit)
+		_confirm_label = ""
+		_confirm_elapsed = 0.0
 		print("SIM: confirmed %s at sim_time %.1f (%d/%d)" % [hit, sim_time, confirmed.size(), assigned.size()])
 
 func _on_capture_tick() -> void:
@@ -272,7 +308,7 @@ func _observation() -> Dictionary:
 		"pose": {
 			"x": snappedf(rover.global_position.x, 0.01),
 			"y": snappedf(rover.global_position.z, 0.01),
-			"heading_deg": snappedf(rover.heading_deg, 0.01),
+			"heading_deg": snappedf(fposmod(rover.heading_deg - 90.0, 360.0), 0.01),
 		},
 		"budget": {
 			"remaining": snappedf(budget, 0.01),
@@ -298,6 +334,23 @@ func _observation() -> Dictionary:
 	}
 
 func _on_action(action: Dictionary) -> void:
+	var reply := int(action.get("in_reply_to_seq", -1))
+	var action_time := float(action.get("sim_time", -100.0))
+	if not is_finite(action_time) or action_time > sim_time + 0.02 or sim_time - action_time > 2.5:
+		return
+	if reply <= _last_action_seq or reply > seq or budget <= 0.0:
+		return
+	if not str(action.get("decision", "")) in ["drive_to_target", "continue", "investigate", "survey", "report", "hold"]:
+		return
+	var checked_drive = action.get("drive", null)
+	if not checked_drive is Dictionary:
+		return
+	var speed_value := float(checked_drive.get("speed", -1.0))
+	var heading_value := float(checked_drive.get("heading_deg", NAN))
+	if not is_finite(speed_value) or not is_finite(heading_value) or speed_value < 0.0 or speed_value > 1.0:
+		return
+	_last_action_seq = reply
+	_last_action_wall = _wall_s
 	if recorder:
 		recorder.action(action)
 	if manual:
@@ -307,7 +360,8 @@ func _on_action(action: Dictionary) -> void:
 	if decision != "investigate" or prev != "investigate":
 		dwell_sim_s = 0.0
 	var drive: Dictionary = action.get("drive", {})
-	var heading := float(drive.get("heading_deg", rover.heading_deg))
+	# Wire: 0 = +X, 90 = +Z. Internal rover compass: 0 = -Z.
+	var heading := fposmod(float(drive.get("heading_deg", rover.heading_deg - 90.0)) + 90.0, 360.0)
 	# contract.py enforces drive.speed in [0, 1]: it is a FRACTION of the rover's top
 	# speed, not m/s. Dividing it by max_speed again pins every drive at full throttle.
 	var frac := clampf(float(drive.get("speed", 0.0)), 0.0, 1.0)
@@ -319,7 +373,7 @@ func _on_action(action: Dictionary) -> void:
 	match decision:
 		"drive_to_target", "continue":
 			state = "AUTONOMOUS"
-			rover.command(heading, frac)
+			rover.command(heading, 0.0 if _confirm_label != "" and _confirm_label == target_label else frac)
 		"investigate":
 			state = "AUTONOMOUS"
 			rover.command(heading, 0.0)

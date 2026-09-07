@@ -83,7 +83,15 @@ func _drain() -> void:
 		# contract.py wants a real int for in_reply_to_seq, so anything that re-emits
 		# an action (the run recorder, a replay tool) fails validation unless the cast
 		# happens here, once, at the parse boundary.
-		parsed["in_reply_to_seq"] = int(parsed.get("in_reply_to_seq", 0))
+		var reply = parsed.get("in_reply_to_seq", -1)
+		if not (reply is float or reply is int) or not is_finite(float(reply)) or float(reply) != floor(float(reply)):
+			continue
+		parsed["in_reply_to_seq"] = int(reply)
+		var audit = parsed.get("audit", null)
+		if audit is Dictionary and audit.has("version"):
+			if float(audit.version) != 2.0:
+				continue
+			audit["version"] = 2
 		actions_received += 1
 		action_received.emit(parsed)
 
@@ -106,6 +114,7 @@ func send_observation(header: Dictionary, jpeg: PackedByteArray) -> bool:
 	if e2 != OK:
 		frames_dropped += 1
 		last_error = "send jpeg (%d B): %s" % [jpeg.size(), error_string(e2)]
+		_ws.close(1011, "incomplete observation pair")
 		return false
 	frames_sent += 1
 	return true

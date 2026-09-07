@@ -1,3 +1,9 @@
+> **Integration update, 2026-09-07:** Dev's `151c4a0` is merged locally.
+> Real Godot + BRAIN acceptance passed: 525 frames, 96 validated actions,
+> M02 confirmed, disconnect stop and reconnect verified. See
+> [phase2-integration.md](phase2-integration.md). Initial marker integration
+> is established; all-marker missions, browser PANEL and trained rocks remain pending.
+
 ﻿# interface-contract.md — current executable process boundary
 
 **Phase 1 revision · 2026-09-07.** Owner of BRAIN: Jabin. SIM/PANEL: Dev.
@@ -27,7 +33,7 @@ Offline labels for Phase 3 training are not runtime observations.
 - A second SIM connection is rejected. A reconnecting continuing mission must keep
   sequence and physics time increasing. Restart BRAIN to begin a new mission.
 - SIM must stop motion and dwell on disconnect or after 2.5 s without a valid command.
-  The Python stub implements this; Godot must implement it during Phase 2.
+  The Python stub and integrated Godot implement this; the real reconnect check passes.
 
 ## Observation (exact existing shape)
 

@@ -58,7 +58,7 @@ const A07_SCREEN := Vector2(3.9, -13.1)
 
 # The marker PNGs are 720 px with a 120 px white quiet zone baked in on every side,
 # so the ArUco pattern itself is only 480/720 of the quad. config.yaml's
-# marker_width_m is the PATTERN width, because that is what BRAIN's range estimate
+# marker_side_m is the PATTERN width, because that is what BRAIN's range estimate
 # f_px * W_m / w_px measures. Size the quad by the full image and every range comes
 # back 1.5x too far -- a silent, perfectly plausible-looking 50 % error.
 const PATTERN_FRACTION := 480.0 / 720.0
@@ -79,7 +79,7 @@ func build(terrain_ref: Terrain, cfg: Dictionary, low_fx := false) -> void:
 	_rng.seed = SimConfig.i(cfg, "world_seed")
 	_scatter_common()
 	_place_anomalies()
-	_place_markers(SimConfig.f(cfg, "marker_width_m"))
+	_place_markers(SimConfig.f(cfg, "marker_side_m"))
 	_scatter_gravel()
 	print("World: %d boulders, %d pebbles, %d markers, %d anomalies"
 		% [rock_count, pebble_count, MARKERS.size(), ANOMALY.size()])

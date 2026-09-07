@@ -1,31 +1,29 @@
 # Progress and restart guide
 
-Last updated: 2026-09-07. Owner continuing this lane: Jabin.
+Last updated: 2026-09-07. Owner: Jabin.
 
-**Current status: Phase 3 BRAIN tools implemented; scene training/calibration await Dev.**
-Phase 1 is complete. No Godot integration checks have run. See
-[phase2-integration.md](phase2-integration.md) for the prerequisite search and checklist.
+**Current: Dev's simulator merged; initial real Godot + BRAIN integration passed.**
 
-Jabin will notify us when Dev updates GitHub; do not fetch/pull until then.
-At Jabin's request, prepared the independent Phase 3 training tools while waiting:
-`brain/rock_dataset.py`, `brain/train_rocks.py`, and 12 passing offline tests in
-`brain/check_rock_training.py`. See [rock-training.md](rock-training.md) for the
-export handoff and commands. Groups stay within one split, labels/files are
-validated, provenance is checked, and evaluation uses the held-out test split.
-No dataset arrived and no real training or accuracy evaluation ran. Phase 3 is
-not complete. Stop here for Jabin's next instruction or Dev's update.
+Preserved prior BRAIN in `0e28b90`, merged Dev's `151c4a0` in `8d602bf`, then
+corrected integration mismatches. Nothing was pushed. The real BRAIN (classical
+fallback, not Dev's probe/dummy) received 525 rendered frames, emitted 96 valid
+actions, stopped when disconnected, reconnected and confirmed M02 at 61.8 s.
+The checked post-disconnect window showed 0.00 m motion. Dev's verify_run.py
+also accepts the final recording. See [phase2-integration.md](phase2-integration.md)
+for paths, commands, coarse camera range measurements and energy accounting.
 
-Verification after preparation: all 12 new checks, 6 foundation checks and 27
-Phase 1 checks pass (45 total); Python compilation and `git diff --check` pass.
-The training wrapper checks use fake model responses, not real accuracy results.
+Checks now pass: 6 foundation + 28 policy/runtime + 12 training preparation +
+5 novelty preparation = 51 Python checks; Godot integration assertions pass,
+Python compilation and git diff --check pass. Real-SIM acceptance is additional.
+No all-marker mission, learned detector, browser PANEL or staged stay/deviate
+run is claimed. Godot acceptance used a 3-second development downlink.
 
-## Phase 3 increment requested by Jabin
+Phase 3 tools exist but training is not complete. Next: adapt Dev's labeller
+from three classes to single-class rock, add independent capture grouping and
+manifest, visually review labels, then train/evaluate and calibrate novelty.
+Stop at this integration boundary before beginning that training phase.
 
-Added `brain/check_novelty_dataset.py` and five passing checks in
-`brain/check_phase3.py`. The actual pretrained GPU encoder also executed on
-synthetic fixtures; evidence: `recordings/phase3-fixture-20260907-144535/novelty.json`.
-See [phase3-perception.md](phase3-perception.md) for input format and commands.
-This is tooling validation, not real rock accuracy or completed Phase 3.
+Earlier entries below are historical and may describe the pre-SIM checkout.
 
 ## Working agreement
 

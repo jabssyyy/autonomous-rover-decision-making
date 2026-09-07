@@ -1,19 +1,10 @@
-> Phase 3 update (2026-09-07): frozen-memory novelty evaluation tooling is implemented
-> alongside detector training preparation. See [Phase 3 status](phase3-perception.md).
-> Actual scene training/calibration and Dev's PANEL remain pending; no GitHub pull
-> until Jabin announces Dev's update.
+> **Integration update, 2026-09-07:** Dev's `151c4a0` is merged locally.
+> Real Godot + BRAIN acceptance passed: 525 frames, 96 validated actions,
+> M02 confirmed, disconnect stop and reconnect verified. See
+> [phase2-integration.md](phase2-integration.md). Initial marker integration
+> is established; all-marker missions, browser PANEL and trained rocks remain pending.
 
 # sim.md — SIM lane (Dev, build this FIRST)
-
-> **Phase 2 prerequisite check:** No Godot project exists in this checkout or the
-> fetched remote as of 2026-09-07. Awaiting its location from Jabin. The unexecuted
-> calibration and integration checklist is in `phase2-integration.md`.
-
-> **Phase 1 handoff:** Read revised `interface-contract.md`. Shared `brain/config.yaml`
-> now specifies 1x physics, paired 5 Hz JSON+JPEG, 1 Wh/m drive, 1 Wh/s dwell,
-> 5 s investigation, 3 s confirmation, and 0.8 m marker square. Real BRAIN emits
-> audit v2. Godot must stop motion/dwell after 2.5 s without valid commands. These
-> behaviors are tested in the Python stub; real Godot remains Phase 2 work.
 
 **v1 · 2026-09-07** · Owner: **Dev**, MacBook M3 Pro → GitHub → Jabin runs it on Windows.
 **Read first:** `interface-contract.md` §1–§4 (schemas), `plan.md` (phases).

@@ -151,6 +151,15 @@ class PolicyChecks(unittest.TestCase):
         self.assertEqual(a['decision'], 'survey')
         self.assertIsNone(a['target'])
 
+    def test_marker_approach_survives_leaving_camera_until_confirmation(self):
+        self.run_case(result([marker(distance=6)], assigned=['M01']))
+        for t in (1, 2, 3, 4):
+            a, _ = self.run_case(result([], assigned=['M01'], t=t, x=4))
+            self.assertEqual(a['decision'], 'drive_to_target')
+            self.assertEqual(a['target']['label'], 'M01')
+        a, _ = self.run_case(result([], assigned=['M01'], confirmed=['M01'], t=5, x=4))
+        self.assertIsNone(a['target'])
+
     def test_hazard_and_halt_override_choice(self):
         for halt, hazard in [(False, .1), (True, 99)]:
             self.st = BrainState(halted=halt)
