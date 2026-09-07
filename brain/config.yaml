@@ -15,3 +15,16 @@ investigate_dwell_sim_s: 5.0
 confirm_dwell_sim_s: 3.0
 max_speed_m_per_s: 1.0
 marker_side_m: 0.8
+
+# SIM rendering and world settings (shared canonical physics keys above).
+camera_hfov_deg: 60
+camera_w: 640
+camera_h: 480
+jpeg_quality: 0.75
+budget_capacity_wh: 1000.0
+budget_start_wh: 1000.0
+rover_yaw_rate_dps: 25.0
+hazard_ray_len_m: 12.0
+hazard_stop_m: 2.0
+arrive_range_m: 2.5
+world_seed: 20260907
