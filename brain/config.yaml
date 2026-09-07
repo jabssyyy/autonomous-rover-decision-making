@@ -9,3 +9,27 @@ gamma: 2.0                  # curiosity temperament (high = cautious, low = eage
 alpha_distance: 1.0
 beta_time: 1.0
 mission_margin: 1.15
+
+# --- SIM-owned section (sim.md S9). BRAIN reads budget.remaining and nothing else. ---
+# Frames: plan.md S6 #17 amended contract S2's 10 Hz down to 5 Hz header+JPEG pairs.
+# observation_rate_hz above is kept for the record; SIM ships pairs at capture_rate_hz.
+capture_rate_hz: 5
+camera_hfov_deg: 60         # HORIZONTAL. Godot Camera3D uses KEEP_WIDTH so fov == hfov.
+camera_w: 640
+camera_h: 480
+jpeg_quality: 0.75
+
+budget_capacity_wh: 1000.0
+budget_start_wh: 1000.0     # stay-run lowers this; deviate-run keeps it. Only this + gamma change.
+drive_rate_wh_per_m: 1.5    # brain.md S5.2 cost model -- BRAIN predicts these, SIM charges them
+dwell_wh_investigate: 0.05  # per SIM second
+idle_rate_wh_per_s: 0.002   # per SIM second
+
+rover_max_speed_mps: 0.6
+rover_yaw_rate_dps: 25.0
+hazard_ray_len_m: 12.0
+hazard_stop_m: 2.0          # below this SIM steers around it, keeping BRAIN's committed target
+arrive_range_m: 2.5         # ground-truth marker confirmation, SIM's call (sim.md S9)
+
+marker_width_m: 1.2         # width of the ArUco PATTERN, not the quad -- BRAIN's range is f_px * W_m / w_px
+world_seed: 20260907        # both demo runs replay identically off this

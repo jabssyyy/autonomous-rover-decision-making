@@ -2,6 +2,7 @@ sim/.godot/
 *.translation
 brain/weights/*.pt
 recordings/
+runs/            # recorded demo runs and YOLO sets: large, regenerate with --record / --label
 __pycache__/
 *.pyc
 .venv/
