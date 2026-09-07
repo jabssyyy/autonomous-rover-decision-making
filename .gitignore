@@ -1,0 +1,10 @@
+sim/.godot/
+*.translation
+brain/weights/*.pt
+recordings/
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
+*.swp

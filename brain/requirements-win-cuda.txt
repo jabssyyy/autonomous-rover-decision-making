@@ -1,0 +1,14 @@
+# BRAIN on Windows 11 + RTX 5060 (Blackwell, sm_120). Python 3.13 (py -3.13). Verified 2026-09-07.
+#   py -3.13 -m venv .venv
+#   .venv\Scripts\python -m pip install -r requirements-win-cuda.txt
+# Blackwell needs CUDA >= 12.8 kernels; the stable cu128 index stops at torch 2.11.1,
+# so we use cu130 (needs an NVIDIA driver whose nvidia-smi reports CUDA >= 13.0; 591.91 does).
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.14.0+cu130
+torchvision==0.29.0+cu130
+ultralytics==8.4.142
+opencv-python==4.14.0.94
+numpy==2.5.3
+pillow==12.3.0
+pyyaml==6.0.3
+websockets==17.1

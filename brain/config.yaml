@@ -1,0 +1,11 @@
+# config.yaml -- interface-contract.md section 9. ONE shared file, both SIM and BRAIN read it.
+# The two demo runs are this file + a different start budget. Nothing else changes.
+time_compression: 60        # 1 real second = 60 sim seconds
+comms_delay_real_s: 60      # one-way, REAL seconds (the demo's gut-punch)
+decision_interval_sim_s: 1.0
+observation_rate_hz: 10
+report_interval_sim_s: 7200 # 2 sim-hours
+gamma: 2.0                  # curiosity temperament (high = cautious, low = eager)
+alpha_distance: 1.0
+beta_time: 1.0
+mission_margin: 1.15

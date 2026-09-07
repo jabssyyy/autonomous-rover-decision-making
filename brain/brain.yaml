@@ -1,0 +1,38 @@
+# brain.yaml -- BRAIN-only knobs. SIM never reads this. Nothing here reaches the wire.
+ports:
+  sim: 8765           # BRAIN is the SERVER on both ports; Godot and the browser are clients
+  panel: 8766
+  host: "0.0.0.0"     # panel laptop is on the LAN; Windows Firewall will prompt -> Allow (private)
+
+perception:
+  aruco_dict: DICT_4X4_50
+  marker_side_m: 0.8          # physical side of the printed marker (SIM stub uses the same)
+  marker_conf_px: 48          # apparent side (px) at which marker confidence reaches 1.0
+  camera_height_m: 1.2        # for the ground-plane range guess on rocks
+  horizon_frac: 0.5           # horizon row as a fraction of image height (level camera)
+  yolo_weights: "yolov8n.pt"  # swap for the AI4Mars fine-tune; missing file -> ultralytics downloads COCO yolov8n
+  yolo_imgsz: 640
+  yolo_conf: 0.15             # low on purpose: confidence-weighted, no hard cutoff (novelty.md)
+  device: "cuda:0"            # "cpu" on the MacBook (or "mps")
+  embedder: "auto"            # auto | resnet18 | hist
+  novelty_scale: 0.5          # novelty = clip((1 - max_cosine_sim) / scale, 0, 1); hist embedder uses 0.12
+  anomaly_threshold: 0.45     # novelty >= this -> kind "anomaly" (id A..), else "rock" (id R..)
+  memory_cap: 512
+  thumb_w: 320
+  max_crops: 3
+
+policy:
+  drive_wh_per_m: 1.0         # BRAIN's ESTIMATE of SIM's cost_rate_drive (SIM owns the truth)
+  dwell_wh_per_sim_s: 0.1     # BRAIN's estimate of cost_rate_dwell
+  investigate_dwell_sim_s: 120
+  confirm_dwell_sim_s: 0
+  cost_floor_wh: 0.5
+  assumed_marker_range_m: 40  # for assigned markers not yet seen (drives B_req)
+  investigate_range_m: 4.0    # anomaly closer than this -> 'investigate'
+  cruise_speed: 0.6
+  survey_after_n_empty: 8     # consecutive decisions with nothing in view -> 'survey'
+  eps: 0.001
+
+record:
+  dir: "runs"
+  enabled: true

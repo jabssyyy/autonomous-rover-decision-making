@@ -1,0 +1,11 @@
+# SIM/PANEL developer machine (MacBook M3 Pro) -- CPU/MPS, no CUDA. Python 3.13.
+#   python3.13 -m venv .venv && .venv/bin/python -m pip install -r requirements-mac-cpu.txt
+# PyPI's default torch wheel for macOS arm64 is CPU+MPS; no index-url needed.
+torch==2.14.0
+torchvision==0.29.0
+ultralytics==8.4.142
+opencv-python==4.14.0.94
+numpy==2.5.3
+pillow==12.3.0
+pyyaml==6.0.3
+websockets==17.1
