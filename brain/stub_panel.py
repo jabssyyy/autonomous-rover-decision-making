@@ -90,7 +90,7 @@ def main() -> None:
                                                        "force_investigate", "set_gamma", "halt"])
     ap.add_argument("--after", type=float, default=5.0, help="real seconds after the first telemetry")
     ap.add_argument("--value", default=None, help="gamma | comma list of markers | target id")
-    ap.add_argument("--time-compression", type=float, default=60.0)
+    ap.add_argument("--time-compression", type=float, default=1.0)
     args = ap.parse_args()
     try:
         asyncio.run(run(args))

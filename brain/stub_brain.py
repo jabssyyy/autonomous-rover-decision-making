@@ -214,7 +214,7 @@ class StubBrain:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--config", default=str(Path(__file__).with_name("config.yaml")))
     ap.add_argument("--delay", type=float, default=None, help="override comms_delay_real_s (REAL seconds)")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--sim-port", type=int, default=8765)

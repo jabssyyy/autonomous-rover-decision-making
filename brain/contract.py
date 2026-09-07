@@ -130,7 +130,7 @@ OBSERVATION = {
     "seq": int,
     "sim_time": float,
     "pose": _POSE,
-    "budget": {"remaining": float, "capacity": float, "unit": str, "simulated": bool},
+    "budget": {"remaining": float, "capacity": float, "unit": ("Wh",), "simulated": bool},
     "hazard": {"range_m": float, "bearing_deg": float},
     "mission": {"assigned_markers": [str], "confirmed_markers": [str]},
     "state": STATES,
@@ -190,7 +190,7 @@ def _candidate(v: Any, path: str) -> None:
         _fail(f"{path}.stream", f"{v['stream']!r} not in ['curiosity', 'mission']")
 
 
-AUDIT = {
+AUDIT_V1 = {
     "candidates": [_candidate],
     "budget": {"remaining": float, "required_for_mission": float},
     "slack": float,
@@ -200,6 +200,77 @@ AUDIT = {
     "chosen": Nullable(str),
     "text": str,
 }
+
+
+def _candidate_v2(v, path):
+    base = _CAND_MISSION if isinstance(v, dict) and v.get("stream") == "mission" else _CAND_CURIOSITY
+    spec = {**base, "cost_wh": float, "eligible": bool, "required_for_mission_after": float}
+    if base is _CAND_CURIOSITY:
+        spec["k"] = float
+    _check(v, spec, path)
+
+
+AUDIT_V2 = {**AUDIT_V1, "version": int, "candidates": [_candidate_v2],
+            "eps": float, "cost_unit_wh": float, "cost_est_floor": float,
+            "gate": {"result": GATE_RESULTS, "post_action_reserve": Nullable(float),
+                     "margin": float, "cost_wh": float,
+                     "required_for_mission_after": float, "reserve_wh": float}}
+
+
+def AUDIT(value, path):
+    if isinstance(value, dict) and "version" in value:
+        if value["version"] != 2:
+            _fail(path, "unsupported audit version")
+        _check(value, AUDIT_V2, path)
+    else:
+        _check(value, AUDIT_V1, path)  # old recordings and canned stub remain readable
+
+
+def check_v2(a):
+    B, required = a["budget"]["remaining"], a["budget"]["required_for_mission"]
+    def equal(actual, expected, name):
+        if not math.isclose(actual, expected, rel_tol=1e-8, abs_tol=1e-8):
+            _fail("audit." + name, f"{actual} != {expected}")
+    if B < 0 or required < 0 or not .1 <= a["gamma"] <= 5:
+        _fail("audit", "negative budget/reserve or gamma outside [0.1,5]")
+    if a["eps"] <= 0 or a["cost_unit_wh"] <= 0 or a["cost_est_floor"] <= 0 or a["gate"]["margin"] < 1:
+        _fail("audit", "invalid cost scaling, epsilon, or margin")
+    equal(a["slack"], (B - required) / B if B > 0 else -1., "slack")
+    equal(a["w_curiosity"], a["slack"] ** a["gamma"] if a["slack"] > 0 else 0., "w_curiosity")
+    candidates = {}
+    for c in a["candidates"]:
+        if c["id"] in candidates:
+            _fail("audit.candidates", "duplicate candidate id")
+        candidates[c["id"]] = c
+        if c["cost_wh"] < 0 or c["required_for_mission_after"] < 0 or not 0 <= c["c"] <= 1:
+            _fail("audit.candidates", "invalid cost, reserve, or confidence")
+        mission = c["stream"] == "mission"
+        if not mission and (not 0 <= c["n"] <= 1 or c["k"] < 0):
+            _fail("audit.candidates", "invalid novelty or curiosity scale")
+        raw = (c["p"] if mission else c["k"] * c["n"]) * c["c"]
+        equal(c["value_raw"], raw, "value_raw")
+        equal(c["value_weighted"], raw if mission else raw * a["w_curiosity"], "value_weighted")
+        equal(c["cost_est"], max(c["cost_wh"] / a["cost_unit_wh"], a["cost_est_floor"]), "cost_est")
+        equal(c["U"], c["value_weighted"] / (c["cost_est"] + a["eps"]), "U")
+        eligible = B >= c["cost_wh"] and B - c["cost_wh"] >= c["required_for_mission_after"] * a["gate"]["margin"]
+        if eligible != c["eligible"]:
+            _fail("audit.eligible", "does not match affordability/reserve calculation")
+    chosen = candidates.get(a["chosen"])
+    if a["chosen"] is not None and (chosen is None or not chosen["eligible"]):
+        _fail("audit.chosen", "missing or ineligible candidate selected")
+    g = a["gate"]
+    equal(g["cost_wh"], chosen["cost_wh"] if chosen else 0., "gate.cost_wh")
+    equal(g["required_for_mission_after"], chosen["required_for_mission_after"] if chosen else required, "gate.required_for_mission_after")
+    equal(g["reserve_wh"], B - g["cost_wh"], "gate.reserve_wh")
+    if g["required_for_mission_after"] > 0:
+        if g["post_action_reserve"] is None:
+            _fail("audit.gate", "reserve ratio required with nonzero denominator")
+        equal(g["post_action_reserve"], g["reserve_wh"] / g["required_for_mission_after"], "gate.post_action_reserve")
+    elif g["post_action_reserve"] is not None:
+        _fail("audit.gate", "zero mission requirement must have null ratio")
+    passed = g["reserve_wh"] >= 0 and g["reserve_wh"] >= g["required_for_mission_after"] * g["margin"]
+    if g["result"] != ("pass" if passed else "fail"):
+        _fail("audit.gate.result", "does not match Wh reserve calculation")
 
 ACTION = {
     "type": ("action",),
@@ -219,6 +290,9 @@ def _close(a: float, b: float) -> bool:
 
 def check_audit_arithmetic(audit: dict) -> None:
     """'Arithmetic must close, and a judge may check it.' So we check it first."""
+    if audit.get("version") == 2:
+        check_v2(audit)
+        return
     B = audit["budget"]["remaining"]
     B_req = audit["budget"]["required_for_mission"]
     if B > 0 and not _close(audit["slack"], (B - B_req) / B):
@@ -261,6 +335,12 @@ def validate_action(msg: Any) -> dict:
     if not (0.0 <= msg["drive"]["speed"] <= 1.0):
         _fail("action.drive.speed", "must be in [0, 1]")
     check_audit_arithmetic(msg["audit"])
+    if msg["audit"].get("version") == 2:
+        label = msg["target"]["label"] if msg["target"] else None
+        if label != msg["audit"]["chosen"]:
+            _fail("action.target", "must match the audited selected target")
+        if msg["decision"] in ("hold", "survey", "report") and (label is not None or msg["drive"]["speed"] != 0):
+            _fail("action", "hold/survey/report must have no target and zero speed")
     return msg
 
 

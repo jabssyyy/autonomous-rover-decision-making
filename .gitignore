@@ -1,7 +1,10 @@
 sim/.godot/
 *.translation
 brain/weights/*.pt
+brain/weights/
 recordings/
+datasets/
+yolo*.pt
 __pycache__/
 *.pyc
 .venv/

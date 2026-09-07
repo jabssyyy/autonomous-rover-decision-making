@@ -1,0 +1,138 @@
+{
+  "stay": {
+    "type": "action",
+    "in_reply_to_seq": 0,
+    "sim_time": 0,
+    "decision": "drive_to_target",
+    "target": {
+      "label": "M01",
+      "kind": "marker",
+      "bearing_deg": 0.0,
+      "est_range_m": 30.0
+    },
+    "drive": {
+      "heading_deg": 0.0,
+      "speed": 0.6
+    },
+    "audit": {
+      "version": 2,
+      "candidates": [
+        {
+          "id": "M01",
+          "stream": "mission",
+          "p": 10.0,
+          "c": 0.6,
+          "value_raw": 6.0,
+          "value_weighted": 6.0,
+          "cost_wh": 33.0,
+          "cost_est": 3.3,
+          "U": 1.8176310209027569,
+          "eligible": true,
+          "required_for_mission_after": 146.0
+        },
+        {
+          "id": "A01",
+          "stream": "curiosity",
+          "n": 0.85,
+          "k": 10.0,
+          "c": 0.8,
+          "value_raw": 6.800000000000001,
+          "value_weighted": 0.14818140589569162,
+          "cost_wh": 11.0,
+          "cost_est": 1.1,
+          "U": 0.13458801625403416,
+          "eligible": true,
+          "required_for_mission_after": 173.0
+        }
+      ],
+      "budget": {
+        "remaining": 210.0,
+        "required_for_mission": 179.0
+      },
+      "slack": 0.14761904761904762,
+      "gamma": 2.0,
+      "w_curiosity": 0.02179138321995465,
+      "eps": 0.001,
+      "cost_unit_wh": 10.0,
+      "cost_est_floor": 0.5,
+      "gate": {
+        "result": "pass",
+        "post_action_reserve": 1.2123287671232876,
+        "margin": 1.15,
+        "cost_wh": 33.0,
+        "required_for_mission_after": 146.0,
+        "reserve_wh": 177.0
+      },
+      "chosen": "M01",
+      "text": "drive_to_target: M01 (U=1.8176). Budget 210.00 Wh; mission estimate 179.00 Wh; slack 0.1476; curiosity weight 0.0218. After selected cost 33.00 Wh: reserve 177.00 Wh vs required 146.00 x margin 1.15. "
+    }
+  },
+  "deviate": {
+    "type": "action",
+    "in_reply_to_seq": 0,
+    "sim_time": 0,
+    "decision": "drive_to_target",
+    "target": {
+      "label": "A01",
+      "kind": "rock",
+      "bearing_deg": 0.0,
+      "est_range_m": 6.0
+    },
+    "drive": {
+      "heading_deg": 0.0,
+      "speed": 0.6
+    },
+    "audit": {
+      "version": 2,
+      "candidates": [
+        {
+          "id": "A01",
+          "stream": "curiosity",
+          "n": 0.85,
+          "k": 10.0,
+          "c": 0.8,
+          "value_raw": 6.800000000000001,
+          "value_weighted": 3.757,
+          "cost_wh": 11.0,
+          "cost_est": 1.1,
+          "U": 3.4123524069028157,
+          "eligible": true,
+          "required_for_mission_after": 173.0
+        },
+        {
+          "id": "M01",
+          "stream": "mission",
+          "p": 10.0,
+          "c": 0.6,
+          "value_raw": 6.0,
+          "value_weighted": 6.0,
+          "cost_wh": 33.0,
+          "cost_est": 3.3,
+          "U": 1.8176310209027569,
+          "eligible": true,
+          "required_for_mission_after": 146.0
+        }
+      ],
+      "budget": {
+        "remaining": 400.0,
+        "required_for_mission": 179.0
+      },
+      "slack": 0.5525,
+      "gamma": 1.0,
+      "w_curiosity": 0.5525,
+      "eps": 0.001,
+      "cost_unit_wh": 10.0,
+      "cost_est_floor": 0.5,
+      "gate": {
+        "result": "pass",
+        "post_action_reserve": 2.2485549132947975,
+        "margin": 1.15,
+        "cost_wh": 11.0,
+        "required_for_mission_after": 173.0,
+        "reserve_wh": 389.0
+      },
+      "chosen": "A01",
+      "text": "drive_to_target: A01 (U=3.4124). Budget 400.00 Wh; mission estimate 179.00 Wh; slack 0.5525; curiosity weight 0.5525. After selected cost 11.00 Wh: reserve 389.00 Wh vs required 173.00 x margin 1.15. "
+    }
+  }
+}

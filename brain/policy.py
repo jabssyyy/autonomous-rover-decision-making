@@ -1,215 +1,219 @@
-"""policy.py -- the slack-driven utility policy from novelty.md.
-
-    M_i = p_i x c_i                 mission value   (p = 10 marker)
-    C_i = n_i x c_i                 curiosity value (n = novelty in [0,1])
-    Cost_i = alpha*d_i + beta*t_i   (Wh, BRAIN's estimate of SIM's rates)
-    S = (B - B_req) / B ;  w_c = max(0,S)^gamma
-    U_i = (M_i + w_c*C_i) / Cost_i ;  target* = argmax U_i
-    gate: accept iff B - Cost(target*) >= B_req_after * margin, else best mission target
-
-Emits ONE contract-valid action whose audit record closes arithmetically
-(contract.check_audit_arithmetic is run on every action before it leaves BRAIN).
-"""
+﻿"""Budget-aware act-or-stay policy. Positions come only from vision and odometry."""
 from __future__ import annotations
-
 import math
 from dataclasses import dataclass, field
 
-
 @dataclass
 class BrainState:
-    mode: str = "AUTONOMOUS"           # AUTONOMOUS | REPORTING | AWAITING_UPLINK
+    mode: str = 'AUTONOMOUS'
     halted: bool = False
-    gamma: float = 2.0
-    sim_time: float = 0.0              # onboard clock, ONLY ever set from observations
+    gamma: float = 2.
+    sim_time: float = 0.
     last_decision_sim: float = -1e9
-    last_report_sim: float = 0.0
+    last_report_sim: float = 0.
     committed: str | None = None
+    committed_at: float = -1e9
     investigating: str | None = None
-    investigate_until_sim: float = 0.0
+    investigate_until_sim: float = 0.
+    investigation: dict | None = None
     investigated: set = field(default_factory=set)
-    deferred: dict = field(default_factory=dict)   # id -> {n, c, x, y, label}  (amplifier #3)
+    visited: list = field(default_factory=list)
+    aborted: list = field(default_factory=list)
+    deferred: dict = field(default_factory=dict)
+    marker_positions: dict = field(default_factory=dict)
+    targets: dict = field(default_factory=dict)
+    known_ids: set = field(default_factory=set)
     assigned_override: list | None = None
-    notes: list = field(default_factory=list)      # one-shot sentences for the next audit text
-    empty_streak: int = 0
+    notes: list = field(default_factory=list)
     decisions: int = 0
 
+def clamp_gamma(value):
+    if not math.isfinite(value):
+        raise ValueError('gamma must be finite')
+    return min(5., max(.1, float(value)))
 
-def r2(x: float) -> float:
-    return round(float(x), 2)
+def world_xy(pose, bearing_deg, range_m):
+    a = math.radians(pose['heading_deg'] + bearing_deg)
+    return pose['x'] + range_m * math.cos(a), pose['y'] + range_m * math.sin(a)
 
+def rel_from(pose, x, y):
+    dx, dy = x - pose['x'], y - pose['y']
+    return math.hypot(dx, dy), (math.degrees(math.atan2(dy, dx)) - pose['heading_deg'] + 180) % 360 - 180
 
-def estimate_cost(kind: str, est_range_m: float, cfg: dict, pol: dict) -> float:
-    drive = cfg["alpha_distance"] * est_range_m * pol["drive_wh_per_m"]
-    dwell_s = pol["investigate_dwell_sim_s"] if kind != "marker" else pol["confirm_dwell_sim_s"]
-    dwell = cfg["beta_time"] * dwell_s * pol["dwell_wh_per_sim_s"]
-    return max(drive + dwell, pol["cost_floor_wh"])
+def estimate_cost(kind, est_range_m, cfg, pol):
+    dwell = cfg['confirm_dwell_sim_s'] if kind == 'marker' else cfg['investigate_dwell_sim_s']
+    return cfg['drive_rate_wh_per_m'] * max(0, est_range_m) + cfg['dwell_rate_wh_per_s'] * dwell
 
+def cancel_investigation(st, reason):
+    # An abort is not a completed observation, so it does not admit a memory.
+    if st.investigation:
+        st.aborted.append((st.investigation['xy'], st.sim_time + 30.))
+    st.investigating, st.investigation, st.committed = None, None, None
+    st.notes.append(reason)
 
-def world_xy(pose: dict, bearing_deg: float, range_m: float) -> tuple[float, float]:
-    a = math.radians(pose["heading_deg"] + bearing_deg)
-    return pose["x"] + range_m * math.cos(a), pose["y"] + range_m * math.sin(a)
-
-
-def rel_from(pose: dict, x: float, y: float) -> tuple[float, float]:
-    dx, dy = x - pose["x"], y - pose["y"]
-    b = (math.degrees(math.atan2(dy, dx)) - pose["heading_deg"] + 180.0) % 360.0 - 180.0
-    return math.hypot(dx, dy), b
-
-
-def _text(decision, chosen, cands, slack, gamma, w_c, fallback_note, notes) -> str:
-    parts = []
-    if chosen is None:
-        parts.append("Nothing worth committing to in view." if not cands else "No affordable target in view.")
-    else:
-        kind = "Marker" if chosen["stream"] == "mission" else "Anomaly"
-        head = f"{kind} {chosen['id']} (U={chosen['U']})"
-        others = [c for c in cands if c["id"] != chosen["id"]][:2]
-        if others:
-            head += " over " + ", ".join(
-                f"{'marker' if o['stream'] == 'mission' else 'anomaly'} {o['id']} (U={o['U']})" for o in others)
-        parts.append(head + ".")
-        top_cur = next((c for c in cands if c["stream"] == "curiosity"), None)
-        if top_cur is not None:
-            if chosen["stream"] == "mission":
-                parts.append(f"Anomaly {top_cur['id']} raw value {top_cur['value_raw']}, but slack {slack} at gamma "
-                             f"{gamma} gives curiosity weight {w_c} -> weighted {top_cur['value_weighted']}.")
-            else:
-                parts.append(f"Slack {slack} at gamma {gamma} gives curiosity weight {w_c}; weighted value "
-                             f"{top_cur['value_weighted']} outranks the mission stream right now.")
-    if fallback_note:
-        parts.append(fallback_note)
-    parts.append({
-        "drive_to_target": "Staying on task." if chosen and chosen["stream"] == "mission" else "Deviating to investigate.",
-        "investigate": "Investigating now.", "continue": "Continuing on heading.",
-        "survey": "Surveying for targets.", "report": "Entering report window.", "hold": "Holding.",
-    }[decision])
-    parts.extend(notes)
-    return " ".join(parts)
-
-
-def decide(res, st: BrainState, cfg: dict, pol: dict) -> tuple[dict, dict]:
-    """res: perception.PerceptionResult. Returns (action, extras)."""
-    hdr, pose = res.header, res.header["pose"]
-    B = hdr["budget"]["remaining"]
-    assigned = st.assigned_override or hdr["mission"]["assigned_markers"]
-    confirmed = hdr["mission"]["confirmed_markers"]
-    todo = [m for m in assigned if m not in confirmed]
-    seen = {d.id: d for d in res.detections}
-    extras: dict = {}
-
-    # --- slack: budget beyond what the assigned markers still need -------------
-    def marker_cost(m: str) -> float:
-        d = seen.get(m)
-        return estimate_cost("marker", d.est_range_m if d else pol["assumed_marker_range_m"], cfg, pol)
-    B_req = sum(marker_cost(m) for m in todo)
-    slack = r2((B - B_req) / B) if B > 0 else -1.0
-    w_c = r2(max(0.0, slack) ** st.gamma)
-
-    # --- candidates: two value streams, one cost model --------------------------
-    cands: list[dict] = []
+def decide(res, st, cfg, pol):
+    hdr, t = res.header, res.sim_time
+    st.sim_time = t
+    pose, B = hdr['pose'], float(hdr['budget']['remaining'])
+    st.gamma = clamp_gamma(st.gamma)
+    assigned = st.assigned_override if st.assigned_override is not None else hdr['mission']['assigned_markers']
+    todo = [m for m in assigned if m not in hdr['mission']['confirmed_markers']]
+    extras = {'protect_embedding': None}
+    notes, st.notes = st.notes, []
+    def visited(xy):
+        return (any(math.dist(xy, old) <= pol['visited_radius_m'] for old in st.visited)
+                or any(t < until and math.dist(xy, old) <= pol['visited_radius_m'] for old, until in st.aborted))
+    # Complete first: the finished rock must not be chosen again this tick.
+    if st.investigating and t >= st.investigate_until_sim:
+        st.investigated.add(st.investigating)
+        st.visited.append(st.investigation['xy'])
+        extras['commit_embedding'] = st.investigating
+        notes.append(f'Investigation of {st.investigating} complete; resuming mission.')
+        st.deferred.pop(st.investigating, None)
+        st.investigating, st.investigation, st.committed = None, None, None
+    fresh, visible = set(), {}
     for d in res.detections:
-        if d.kind == "marker":
-            if d.label not in todo:
-                continue
-            cost = r2(estimate_cost("marker", d.est_range_m, cfg, pol))
-            raw = r2(10 * d.conf)
-            cands.append({"id": d.id, "stream": "mission", "p": 10, "c": d.conf, "value_raw": raw,
-                          "value_weighted": raw, "cost_est": cost, "U": r2(raw / cost),
-                          "_kind": "marker", "_bearing": d.bearing_deg, "_range": d.est_range_m, "_label": d.label})
-        else:
-            if d.id in st.investigated:
-                continue
-            cost = r2(estimate_cost(d.kind, d.est_range_m, cfg, pol))
-            raw = r2(d.novelty * d.conf)
-            wv = r2(w_c * raw)
-            cands.append({"id": d.id, "stream": "curiosity", "n": d.novelty, "c": d.conf, "value_raw": raw,
-                          "value_weighted": wv, "cost_est": cost, "U": r2(wv / cost),
-                          "_kind": d.kind, "_bearing": d.bearing_deg, "_range": d.est_range_m, "_label": d.label})
-            st.deferred.pop(d.id, None)          # visible again: fresh numbers replace the deferred copy
-    for did, dd in list(st.deferred.items()):     # deferred-target queue (novelty.md amplifier #3)
-        if did in seen or did in st.investigated:
+        if not all(math.isfinite(v) for v in (d.conf, d.novelty, d.est_range_m, d.bearing_deg)):
             continue
-        rng, b = rel_from(pose, dd["x"], dd["y"])
-        cost = r2(estimate_cost("anomaly", rng, cfg, pol))
-        raw = r2(dd["n"] * dd["c"])
-        wv = r2(w_c * raw)
-        cands.append({"id": did, "stream": "curiosity", "n": dd["n"], "c": dd["c"], "value_raw": raw,
-                      "value_weighted": wv, "cost_est": cost, "U": r2(wv / cost),
-                      "_kind": "anomaly", "_bearing": r2(b), "_range": r2(rng), "_label": dd["label"], "_deferred": True})
-    cands.sort(key=lambda c: -c["U"])
-
-    # --- argmax + hard gate ------------------------------------------------------
-    chosen = None
-    gate = {"result": "pass", "post_action_reserve": 99.99, "margin": cfg["mission_margin"]}
-    fallback_note = ""
-    if cands:
-        best = cands[0]
-        B_req_after = B_req - (best["cost_est"] if best["stream"] == "mission" else 0.0)
-        reserve = r2(min(99.99, (B - best["cost_est"]) / max(B_req_after, pol["eps"])))
-        result = "pass" if reserve >= cfg["mission_margin"] else "fail"
-        gate = {"result": result, "post_action_reserve": reserve, "margin": cfg["mission_margin"]}
-        if result == "pass":
-            chosen = best
+        if not 0 <= d.est_range_m <= pol['max_target_range_m']:
+            continue
+        if d.kind == 'marker' and d.label not in todo:
+            continue
+        xy = world_xy(pose, d.bearing_deg, d.est_range_m)
+        if d.kind != 'marker' and (d.id in st.investigated or visited(xy)):
+            continue
+        item = {'id': d.id, 'kind': d.kind, 'label': d.label, 'xy': xy,
+                'c': min(1., max(0., d.conf)), 'n': min(1., max(0., d.novelty)), 'seen_at': t}
+        visible[d.id] = st.targets[d.id] = item
+        if d.kind == 'marker':
+            st.marker_positions[d.label] = xy
         else:
-            missions = [c for c in cands if c["stream"] == "mission"]
-            chosen = missions[0] if missions else None
-            if best["stream"] == "curiosity" and not best.get("_deferred"):
-                x, y = world_xy(pose, best["_bearing"], best["_range"])
-                st.deferred[best["id"]] = {"n": best["n"], "c": best["c"], "x": x, "y": y, "label": best["_label"]}
-            fallback_note = (f"Gate failed for {best['id']} (reserve {reserve} < margin {cfg['mission_margin']}); "
-                             + (f"falling back to mission target {chosen['id']}." if chosen else "no mission target in view.")
-                             + (f" {best['id']} queued for later." if best["stream"] == "curiosity" else ""))
-
-    # --- decision --------------------------------------------------------------------
-    heading = pose["heading_deg"]
-    decision, target, speed = "continue", None, pol["cruise_speed"]
-    if st.halted or st.mode == "AWAITING_UPLINK":
-        decision, speed = "hold", 0.0
-    elif st.mode == "REPORTING":
-        st.mode, decision, speed = "AWAITING_UPLINK", "hold", 0.0
-    elif res.sim_time - st.last_report_sim >= cfg["report_interval_sim_s"]:
-        st.mode, st.last_report_sim, decision, speed = "REPORTING", res.sim_time, "report", 0.0
-    elif st.investigating and res.sim_time < st.investigate_until_sim:
-        d = seen.get(st.investigating)
-        decision, speed = "investigate", 0.0
-        target = {"label": st.investigating, "kind": d.kind if d else "anomaly",
-                  "bearing_deg": d.bearing_deg if d else 0.0, "est_range_m": d.est_range_m if d else 0.0}
-    else:
+            st.deferred[d.id] = item
+        if d.id not in st.known_ids:
+            fresh.add(d.id)
+        st.known_ids.add(d.id)
+    st.targets = {k: v for k, v in st.targets.items() if t - v['seen_at'] <= pol['target_ttl_s']}
+    st.deferred = {k: v for k, v in st.deferred.items()
+                   if t - v['seen_at'] <= pol['deferred_ttl_s'] and not visited(v['xy'])}
+    def mission_required(origin, exclude=None):
+        # Sum of straight-line estimates, not a route or a guarantee of real cost.
+        total = 0.
+        for marker in todo:
+            if marker == exclude:
+                continue
+            xy = st.marker_positions.get(marker)
+            distance = math.dist(origin, xy) if xy is not None else pol['assumed_marker_range_m']
+            total += estimate_cost('marker', distance, cfg, pol)
+        return total
+    B_req = mission_required((pose['x'], pose['y']))
+    slack = (B - B_req) / B if B > 0 else -1.
+    wc = slack ** st.gamma if slack > 0 else 0.
+    items = dict(st.deferred)
+    if st.committed in st.targets:
+        items[st.committed] = st.targets[st.committed]
+    items.update(visible)
+    if st.investigating:
+        items[st.investigating] = st.investigation
+    candidates = []
+    for item in items.values():
+        mission = item['kind'] == 'marker'
+        if mission and item['label'] not in todo:
+            continue
+        distance, bearing = rel_from(pose, *item['xy'])
+        if distance > pol['max_target_range_m']:
+            continue
+        cost = estimate_cost(item['kind'], distance, cfg, pol)
+        if item['id'] == st.investigating:
+            cost = max(0., st.investigate_until_sim - t) * cfg['dwell_rate_wh_per_s']
+        req_after = mission_required(item['xy'], item['label'] if mission else None)
+        eligible = B >= cost and B - cost >= req_after * cfg['mission_margin']
+        raw = (10. if mission else pol['k_curiosity'] * item['n']) * item['c']
+        weighted = raw if mission else wc * raw
+        normalized = max(cost / pol['cost_unit_wh'], pol['cost_est_floor'])
+        candidates.append({'id': item['id'], 'stream': 'mission' if mission else 'curiosity',
+            **({'p': 10.} if mission else {'n': item['n'], 'k': pol['k_curiosity']}),
+            'c': item['c'], 'value_raw': raw, 'value_weighted': weighted,
+            'cost_wh': cost, 'cost_est': normalized, 'U': weighted / (normalized + pol['eps']),
+            'eligible': eligible, 'required_for_mission_after': req_after,
+            '_item': item, '_range': distance, '_bearing': bearing})
+    candidates.sort(key=lambda c: (-c['U'], c['id']))
+    eligible = [c for c in candidates if c['eligible'] and c['U'] > 0]
+    chosen = eligible[0] if eligible else None
+    if candidates and not candidates[0]['eligible']:
+        notes.append(f"Reserve/affordability gate rejected {candidates[0]['id']}; every fallback was checked too.")
+    current = next((c for c in eligible if c['id'] == st.committed), None)
+    if current and chosen and current is not chosen:
+        locked = t - st.committed_at < pol['commit_lock_s'] and chosen['id'] not in fresh
+        if locked or chosen['U'] < current['U'] * pol['switch_ratio']:
+            chosen = current
+            notes.append('Keeping commitment: challenger did not satisfy the switch ratio/lock.')
+    decision, speed = 'survey', 0.
+    if st.halted or st.mode == 'AWAITING_UPLINK':
+        chosen, decision = None, 'hold'
         if st.investigating:
-            st.investigated.add(st.investigating)
-            st.notes.append(f"Investigation of {st.investigating} complete; resuming mission.")
-            st.investigating = None
-        if chosen is None:
-            st.empty_streak += 1
-            if st.empty_streak >= pol["survey_after_n_empty"]:
-                decision, speed, st.empty_streak = "survey", 0.0, 0
+            cancel_investigation(st, 'Investigation stopped by hold.')
+    elif hdr['hazard']['range_m'] <= pol['hazard_stop_m'] or B <= 0:
+        chosen, decision = None, 'hold'
+        notes.append('Safety stop: close hazard or exhausted budget.')
+        if st.investigating:
+            cancel_investigation(st, 'Investigation stopped by safety veto.')
+    elif st.investigating:
+        chosen = next((c for c in candidates if c['id'] == st.investigating and c['eligible']), None)
+        if chosen:
+            decision = 'investigate'
         else:
-            st.empty_streak = 0
-            kind = chosen["_kind"]
-            target = {"label": chosen["_label"] if kind == "marker" else chosen["id"], "kind": kind,
-                      "bearing_deg": r2(chosen["_bearing"]), "est_range_m": r2(chosen["_range"])}
-            if kind != "marker" and chosen["_range"] <= pol["investigate_range_m"] and not chosen.get("_deferred"):
-                decision, speed = "investigate", 0.0
-                st.investigating, st.investigate_until_sim = chosen["id"], res.sim_time + pol["investigate_dwell_sim_s"]
-                extras["commit_embedding"] = chosen["id"]      # habituation: it is in memory from now on
-            else:
-                decision = "drive_to_target"
-                heading = (pose["heading_deg"] + chosen["_bearing"]) % 360.0
-            st.committed = target["label"]
-
-    text = _text(decision, chosen, cands, slack, st.gamma, w_c, fallback_note, st.notes)
+            cancel_investigation(st, 'Investigation aborted: remaining dwell would violate reserve.')
+            decision = 'hold'
+    elif st.mode == 'REPORTING':
+        st.mode, chosen, decision = 'AWAITING_UPLINK', None, 'hold'
+    elif t - st.last_report_sim >= cfg['report_interval_sim_s']:
+        st.mode, st.last_report_sim, chosen, decision = 'REPORTING', t, None, 'report'
+    elif chosen:
+        item = chosen['_item']
+        if chosen['id'] not in visible and chosen['_range'] <= pol['investigate_range_m']:
+            chosen = None
+            notes.append('Remembered target is nearby: survey to visually reacquire before acting.')
+        elif item['kind'] != 'marker' and chosen['_range'] <= pol['investigate_range_m']:
+            st.investigating, st.investigation = chosen['id'], dict(item)
+            st.investigate_until_sim = t + cfg['investigate_dwell_sim_s']
+            decision = 'investigate'
+        else:
+            decision, speed = 'drive_to_target', pol['cruise_speed']
+    elif any(c['U'] > 0 for c in candidates) and not eligible:
+        decision = 'hold'
+        notes.append('No positive-value target passes the budget gate.')
+    else:
+        notes.append('No target in view; surveying.')
+    heading, target = pose['heading_deg'], None
+    if chosen:
+        if st.committed != chosen['id']:
+            st.committed, st.committed_at = chosen['id'], t
+        item = chosen['_item']
+        target = {'label': item['label'] if item['kind'] == 'marker' else chosen['id'],
+                  'kind': item['kind'], 'bearing_deg': chosen['_bearing'], 'est_range_m': chosen['_range']}
+        heading = (heading + chosen['_bearing']) % 360
+        if item['kind'] != 'marker':
+            extras['protect_embedding'] = chosen['id']
+    else:
+        st.committed = None
+    cost = chosen['cost_wh'] if chosen else 0.
+    req_after = chosen['required_for_mission_after'] if chosen else B_req
+    reserve = B - cost
+    gate = {'result': 'pass' if reserve >= req_after * cfg['mission_margin'] and reserve >= 0 else 'fail',
+            'post_action_reserve': reserve / req_after if req_after > 0 else None,
+            'margin': cfg['mission_margin'], 'cost_wh': cost,
+            'required_for_mission_after': req_after, 'reserve_wh': reserve}
+    text = (f"{decision}: {chosen['id']} (U={chosen['U']:.4f}). " if chosen else f'{decision}: no selected target. ')
+    text += (f'Budget {B:.2f} Wh; mission estimate {B_req:.2f} Wh; slack {slack:.4f}; '
+             f'curiosity weight {wc:.4f}. After selected cost {cost:.2f} Wh: '
+             f"reserve {reserve:.2f} Wh vs required {req_after:.2f} x margin {cfg['mission_margin']:.2f}. ")
+    text += ' '.join(notes + st.notes)
     st.notes.clear()
-    shown = cands[:8]
-    if chosen is not None and chosen not in shown:
-        shown.append(chosen)
-    audit = {
-        "candidates": [{k: v for k, v in c.items() if not k.startswith("_")} for c in shown],
-        "budget": {"remaining": r2(B), "required_for_mission": r2(B_req)},
-        "slack": slack, "gamma": st.gamma, "w_curiosity": w_c, "gate": gate,
-        "chosen": chosen["id"] if chosen else None, "text": text,
-    }
-    action = {"type": "action", "in_reply_to_seq": res.seq, "sim_time": res.sim_time, "decision": decision,
-              "target": target, "drive": {"heading_deg": r2(heading % 360.0), "speed": float(speed)}, "audit": audit}
+    audit = {'version': 2, 'candidates': [{k: v for k, v in c.items() if not k.startswith('_')} for c in candidates],
+             'budget': {'remaining': B, 'required_for_mission': B_req}, 'slack': slack,
+             'gamma': st.gamma, 'w_curiosity': wc, 'eps': pol['eps'],
+             'cost_unit_wh': pol['cost_unit_wh'], 'cost_est_floor': pol['cost_est_floor'],
+             'gate': gate, 'chosen': chosen['id'] if chosen else None, 'text': text}
     st.decisions += 1
-    return action, extras
+    return {'type': 'action', 'in_reply_to_seq': res.seq, 'sim_time': t, 'decision': decision,
+            'target': target, 'drive': {'heading_deg': heading % 360, 'speed': float(speed)}, 'audit': audit}, extras

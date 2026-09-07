@@ -1,4 +1,19 @@
+> Phase 3 update (2026-09-07): frozen-memory novelty evaluation tooling is implemented
+> alongside detector training preparation. See [Phase 3 status](phase3-perception.md).
+> Actual scene training/calibration and Dev's PANEL remain pending; no GitHub pull
+> until Jabin announces Dev's update.
+
 # sim.md — SIM lane (Dev, build this FIRST)
+
+> **Phase 2 prerequisite check:** No Godot project exists in this checkout or the
+> fetched remote as of 2026-09-07. Awaiting its location from Jabin. The unexecuted
+> calibration and integration checklist is in `phase2-integration.md`.
+
+> **Phase 1 handoff:** Read revised `interface-contract.md`. Shared `brain/config.yaml`
+> now specifies 1x physics, paired 5 Hz JSON+JPEG, 1 Wh/m drive, 1 Wh/s dwell,
+> 5 s investigation, 3 s confirmation, and 0.8 m marker square. Real BRAIN emits
+> audit v2. Godot must stop motion/dwell after 2.5 s without valid commands. These
+> behaviors are tested in the Python stub; real Godot remains Phase 2 work.
 
 **v1 · 2026-09-07** · Owner: **Dev**, MacBook M3 Pro → GitHub → Jabin runs it on Windows.
 **Read first:** `interface-contract.md` §1–§4 (schemas), `plan.md` (phases).
@@ -192,7 +207,10 @@ Free CC0 sources: **Poly Haven** `moon_rock_01..07` (6k–18k tris, glTF), plus 
 
 **The 4–5 common rock types must differ in TEXTURE, not just tint.** Types that differ only by colour barely separate in the embedding space (between/within distance ratio ~1.5), which means the novelty score cannot tell them apart and habituation never demonstrates. Use different AI4Mars texture crops per type.
 
-**Scatter from a script** at seeded positions so both demo runs are reproducible. Place the anomaly where the deviate run needs it: **~5–6 m from the rover's path, with the target marker ~30–35 m ahead.** Those distances come from Jabin's tuned staging (`brain.md` §5.3) — they are what make the deviate run win by 2.1× and the stay run lose by 15×.
+**Scatter from a script** at seeded positions so both demo runs are reproducible.
+An anomaly around 6 m away with a marker around 30 m away is the starting geometry.
+The old claimed margins were inconsistent. `brain.md` now gives a verified controlled
+210/400 Wh example; calibrate the actual Godot image-based decisions before staging.
 
 ⚠ **Do not let the anomaly be visible in the first 60 sim-seconds.** BRAIN's novelty memory treats whatever it sees during warm-up as "normal". Start the rover facing common rocks.
 
@@ -217,12 +235,15 @@ Project each rock's 3D AABB into the camera with `Camera3D.unproject_position()`
 **Budget — SIM owns it.** BRAIN never decrements; it only reads `budget.remaining`. Use the same three rates Jabin's cost model predicts (`brain.md` §5.2), from `config.yaml`:
 ```
 drive:        drive_rate_wh_per_m  x  distance_travelled
-investigate:  dwell_wh_investigate x  dwell_time
-idle:         idle_rate            x  elapsed
+investigate:  dwell_rate_wh_per_s x dwell_time
+confirm:      dwell_rate_wh_per_s x confirmation_time
+idle:         idle_rate_wh_per_s x elapsed
 ```
 Mismatch between BRAIN's *predicted* cost and SIM's *actual* charge is honest and worth showing on the panel.
 
-**Marker confirmation** is SIM's call (ground truth: rover within `arrive_range_m` of the marker) — it goes into `mission.confirmed_markers`. That is legitimate: BRAIN learns it did the job the same way a real rover would, from its own mission state.
+**Marker confirmation** requires a BRAIN-committed marker, arrival within 3 m,
+and 3 physics seconds of confirmation dwell. Stop at the marker and charge dwell
+energy. Only then add the ID to `mission.confirmed_markers`.
 
 ---
 
@@ -239,3 +260,10 @@ Push early and often; he integrates on Windows. Before you say it's ready:
 - ☐ Common rock types differ in texture, not just tint
 
 Then move to `panel.md`.
+# Offline rock export handoff (2026-09-07)
+
+Jabin's dataset preparation and training/evaluation tools are ready. Follow
+[rock-training.md](rock-training.md) for the 640x480 images, single-class YOLO
+labels and grouped JSONL manifest. Labels are offline training material only;
+do not add them to runtime observations. Actual training and Godot integration
+remain pending. Jabin will announce when Dev's GitHub update is ready to pull.

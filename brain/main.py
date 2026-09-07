@@ -51,7 +51,7 @@ class Brain:
         self.cfg, self.bcfg, self.args = cfg, bcfg, args
         self.pol = bcfg["policy"]
         self.t0 = time.monotonic()
-        self.st = policy.BrainState(gamma=float(cfg["gamma"]))
+        self.st = policy.BrainState(gamma=policy.clamp_gamma(float(cfg["gamma"])))
         self.frames = LatestSlot()
         self.results = LatestSlot()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="perception")
@@ -61,7 +61,8 @@ class Brain:
         self.up = DelayLine(delay, self.apply_uplink)
         self.sim_ws = None
         self.panels: set = set()
-        self.pending_header: dict | None = None
+        self.session_id = 0
+        self.last_seq = -1
         self.stop = asyncio.Event()
         self.frames_rx = 0
         self.rec: Recorder | None = None
@@ -76,24 +77,37 @@ class Brain:
 
     # ------------------------------------------------------------------ SIM link
     async def sim_handler(self, ws) -> None:
-        log.info("SIM connected from %s (newest connection wins)", ws.remote_address)
+        if self.sim_ws is not None:
+            await ws.close(code=1008, reason="Only one SIM may control a mission")
+            return
+        log.info("SIM connected from %s", ws.remote_address)
         self.sim_ws = ws
+        self.session_id += 1
+        session_id = self.session_id
+        pending_header = None
         try:
             async for msg in ws:
                 if isinstance(msg, str):
-                    self.pending_header = validate_observation(json.loads(msg))     # THE RULE, enforced
+                    if pending_header is not None:
+                        raise ContractViolation("observation header must be followed by one JPEG")
+                    pending_header = validate_observation(json.loads(msg))
                     continue
-                if self.pending_header is None:
+                if pending_header is None:
                     raise ContractViolation("binary frame arrived without a preceding observation header")
-                hdr, self.pending_header = self.pending_header, None
+                hdr, pending_header = pending_header, None
                 jpeg = validate_jpeg(msg)
+                if hdr["seq"] <= self.last_seq or hdr["sim_time"] < self.st.sim_time:
+                    raise ContractViolation("observation clock/sequence regressed; restart BRAIN for a new mission")
+                self.last_seq = hdr["seq"]
                 self.st.sim_time = hdr["sim_time"]                       # the onboard clock advances here, only here
                 self.frames_rx += 1
                 if self.rec:
                     ref = self.rec.frame(hdr["seq"], jpeg)
                     self.rec.jsonl("observations", {**hdr, "_frame_ref": ref, "_real_s": self.real(), "_bytes": len(jpeg)})
-                self.frames.put(Observation(hdr, jpeg, self.real()))     # newest wins; stale frames are dropped
-        except ContractViolation as e:
+                observation = Observation(hdr, jpeg, self.real())
+                observation.session_id = session_id
+                self.frames.put(observation)
+        except (ContractViolation, ValueError) as e:
             log.critical("CONTRACT VIOLATION on the SIM link: %s", e)
             if not self.args.lenient:
                 self.stop.set()                                          # strict: the process dies, loudly
@@ -112,13 +126,16 @@ class Brain:
                 res = await loop.run_in_executor(self.pool, self.perceiver.perceive, obs)
             except Exception:
                 log.exception("perception failed on seq %s", obs.header.get("seq"))
-                continue
+                raise  # supervised by serve(); SIM's command watchdog stops motion
+            res.session_id = obs.session_id
             res.dropped_before = self.frames.take_dropped()
             self.results.put(res)
 
     async def decider(self) -> None:
         while True:
             res = await self.results.take()
+            if self.sim_ws is None or res.session_id != self.session_id or self.real() - res.recv_real > 2.5:
+                continue
             if res.sim_time - self.st.last_decision_sim < self.cfg["decision_interval_sim_s"]:
                 continue                                                 # fixed cadence, in SIM time
             action, extras = policy.decide(res, self.st, self.cfg, self.pol)
@@ -132,6 +149,7 @@ class Brain:
             self.st.last_decision_sim = res.sim_time
             if "commit_embedding" in extras:
                 self.perceiver.commit(extras["commit_embedding"])
+            self.perceiver.memory.protect(extras.get("protect_embedding"))
             ws = self.sim_ws
             if ws is not None:
                 try:
@@ -144,10 +162,11 @@ class Brain:
                      next((c["U"] for c in a["candidates"] if c["id"] == a["chosen"]), "-"), a["slack"], a["w_curiosity"],
                      len(res.detections), res.timings_ms.get("total", 0.0), res.dropped_before, a["text"][:70])
             # telemetry -> delay line (the downlink is itself a decision: thumbnail + top-k anomaly crops)
+            assigned = self.st.assigned_override if self.st.assigned_override is not None else res.header["mission"]["assigned_markers"]
             tele = {"type": "telemetry", "generated_at": res.sim_time, "delivered_at": res.sim_time,
                     "pose": res.header["pose"], "state": self.st.mode, "audit": a,
-                    "mission": {"confirmed_markers": res.header["mission"]["confirmed_markers"],
-                                "total": len(self.st.assigned_override or res.header["mission"]["assigned_markers"])},
+                    "mission": {"confirmed_markers": [m for m in res.header["mission"]["confirmed_markers"] if m in assigned],
+                                "total": len(assigned)},
                     "attachments": [{"kind": "thumbnail", "frame_ref": f"f_{res.seq}"}]
                                    + [{"kind": "anomaly_crop", "id": cid, "novelty": nov} for (cid, nov, _) in res.crops]}
             validate_telemetry(tele)
@@ -208,17 +227,19 @@ class Brain:
             else:
                 stale = True
         elif cmd == "set_gamma":
-            st.gamma = float(pl["gamma"])
+            st.gamma = policy.clamp_gamma(float(pl["gamma"]))
         elif cmd == "reassign_markers":
             st.assigned_override = list(pl["assigned_markers"])
         elif cmd == "abort_investigation":
             if st.investigating:
-                st.investigated.add(st.investigating)
-                st.investigating = None
+                policy.cancel_investigation(st, "Operator aborted the current investigation.")
+                self.perceiver.memory.protect(None)
             else:
                 stale = True                                               # the late-interrupt beat
         elif cmd == "force_investigate":
-            stale = True                                                   # TODO: commit if pl["target"] is in view
+            # A force command cannot bypass the reserve gate or visual reacquisition.
+            st.notes.append("force_investigate is unsupported in Phase 1; no override executed.")
+            stale = True
         event = "uplink_stale" if stale else "uplink_applied"
         log.warning("%s: %s at sim %.1f (issued at sim %.1f, %.0f sim s ago)", event, cmd, st.sim_time,
                     up["issued_at"], st.sim_time - up["issued_at"])
@@ -243,18 +264,23 @@ class Brain:
                      self.cfg["decision_interval_sim_s"], self.perceiver.backend)
             tasks = [asyncio.create_task(c) for c in (self.perception_worker(), self.decider(), self.down.run(),
                                                       self.up.run(), self.stats())]
+            stop_task = asyncio.create_task(self.stop.wait())
             try:
-                await self.stop.wait()
+                done, _ = await asyncio.wait([stop_task, *tasks], return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    if task is not stop_task:
+                        task.result()  # propagate worker failure rather than silently freezing
             finally:
-                for t in tasks:
+                for t in [stop_task, *tasks]:
                     t.cancel()
+                await asyncio.gather(stop_task, *tasks, return_exceptions=True)
                 self.pool.shutdown(wait=False, cancel_futures=True)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config", default="config.yaml")
-    ap.add_argument("--brain", default="brain.yaml")
+    ap.add_argument("--config", default=str(Path(__file__).with_name("config.yaml")))
+    ap.add_argument("--brain", default=str(Path(__file__).with_name("brain.yaml")))
     ap.add_argument("--tag", default="run")
     ap.add_argument("--delay", type=float, default=None, help="override comms_delay_real_s (REAL seconds)")
     ap.add_argument("--no-yolo", action="store_true")
@@ -266,6 +292,11 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s %(message)s", datefmt="%H:%M:%S")
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     bcfg = yaml.safe_load(Path(args.brain).read_text(encoding="utf-8"))
+    bcfg["record"]["dir"] = str((Path(args.brain).resolve().parent / bcfg["record"]["dir"]).resolve())
+    if cfg["time_compression"] != 1:
+        raise ValueError("Phase 1 requires physics seconds: time_compression must be 1")
+    if bcfg["perception"]["marker_side_m"] != cfg["marker_side_m"]:
+        raise ValueError("marker width must agree between shared and BRAIN config")
     brain = Brain(cfg, bcfg, args)
     try:
         asyncio.run(brain.serve())

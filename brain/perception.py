@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import logging
 import math
-import threading
+from pathlib import Path
+from collections import deque
+from novelty import NoveltyMemory
 import time
 from dataclasses import dataclass, field
 
@@ -55,33 +57,6 @@ class PerceptionResult:
     backend: str = ""
 
 
-class NoveltyMemory:
-    """Running memory of embeddings. novelty = clip((1 - max cosine sim) / scale).
-    Habituation is free: the fifth identical striped rock scores ~0 because the first is in here."""
-
-    def __init__(self, cap: int, scale: float) -> None:
-        self.cap, self.scale = cap, scale
-        self._vecs: list[np.ndarray] = []
-        self._lock = threading.Lock()
-
-    def novelty(self, v: np.ndarray) -> float:
-        with self._lock:
-            if not self._vecs:
-                return 1.0
-            M = np.stack(self._vecs)
-        sim = float((M @ v).max())
-        return float(np.clip((1.0 - sim) / self.scale, 0.0, 1.0))
-
-    def add(self, v: np.ndarray) -> None:
-        with self._lock:
-            self._vecs.append(v)
-            if len(self._vecs) > self.cap:
-                self._vecs.pop(0)
-
-    def __len__(self) -> int:
-        return len(self._vecs)
-
-
 class HistEmbedder:
     """Fallback signature: HSV histograms + gradient/texture stats. Not a CNN, but it makes
     novelty-as-distance-from-memory real (and habituation observable) with zero downloads."""
@@ -110,6 +85,7 @@ class TorchEmbedder:
     def __init__(self, device: str) -> None:
         import torch
         from torchvision.models import ResNet18_Weights, resnet18
+        torch.hub.set_dir(str(Path(__file__).resolve().parent / "weights" / "cache" / "hub"))
         w = ResNet18_Weights.DEFAULT
         m = resnet18(weights=w)
         m.fc = torch.nn.Identity()
@@ -120,7 +96,7 @@ class TorchEmbedder:
             device = "cpu"
         self.device = device
         self.m = m.eval().to(device)
-        self.tf = w.transforms()
+        self.tf = w.transforms(crop_size=160, resize_size=184)
         self.torch = torch
 
     def __call__(self, bgr: np.ndarray) -> np.ndarray:
@@ -142,8 +118,10 @@ class Tracker:
     def match(self, bearing: float, seq: int) -> str | None:
         best, bd = None, self.max_db
         for tid, t in self.tracks.items():
-            if seq - t["seq"] <= self.max_gap and abs(t["bearing"] - bearing) < bd:
-                best, bd = tid, abs(t["bearing"] - bearing)
+            # A track updated in this frame has already been assigned a box.
+            # Reusing it gives two candidates the same ID and invalidates the audit.
+            if 0 < seq - t["seq"] <= self.max_gap and abs((t["bearing"] - bearing + 180) % 360 - 180) < bd:
+                best, bd = tid, abs((t["bearing"] - bearing + 180) % 360 - 180)
         return best
 
     def new_id(self, kind: str) -> str:
@@ -175,10 +153,13 @@ class Perceiver:
         params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
         self.aruco = cv2.aruco.ArucoDetector(dictionary, params)
         self.yolo = None
-        if use_yolo:
+        if use_yolo and (Path(__file__).resolve().parent / pcfg["yolo_weights"]).is_file():
             try:
                 from ultralytics import YOLO
-                self.yolo = YOLO(pcfg["yolo_weights"])
+                self.yolo = YOLO(str(Path(__file__).resolve().parent / pcfg["yolo_weights"]))
+                if list(self.yolo.names.values()) != ["rock"]:
+                    self.yolo = None
+                    raise ValueError("learned detector must have exactly one class: rock")
                 log.info("YOLO loaded: %s (%d classes)", pcfg["yolo_weights"], len(self.yolo.names))
             except Exception as e:
                 log.warning("YOLO unavailable (%s) -> saturation-blob fallback for rocks", e)
@@ -190,18 +171,16 @@ class Perceiver:
                 log.warning("torch embedder unavailable (%s) -> histogram signature", e)
         if self.embedder is None:
             self.embedder = HistEmbedder()
-        scale = pcfg["novelty_scale"] if self.embedder.name == "resnet18" else HistEmbedder.default_scale
-        self.memory = NoveltyMemory(pcfg["memory_cap"], scale)
+        self.memory = NoveltyMemory(pcfg["memory_cap"], pcfg["novelty_scale"], pcfg["novelty_warmup_s"], pcfg["novelty_commit_delay_s"])
+        self.marker_history = {}
         self.tracker = Tracker()
         self.last_embeddings: dict[str, np.ndarray] = {}
         self.backend = f"aruco+{'yolo' if self.yolo else 'blobs'}+{self.embedder.name}"
         log.info("perception backend: %s", self.backend)
 
     def commit(self, tid: str) -> None:
-        """Called by the policy on 'investigate': the thing is now in memory -> habituation."""
-        v = self.last_embeddings.get(tid)
-        if v is not None:
-            self.memory.add(v)
+        """Called only after completed investigation, not at approach or dwell start."""
+        self.memory.complete(tid)
 
     # ---- runs in the perception thread ---------------------------------------
     def perceive(self, obs: Observation) -> PerceptionResult:
@@ -212,6 +191,9 @@ class Perceiver:
         if img is None:
             raise ValueError(f"seq {hdr['seq']}: JPEG decode failed")
         h, w = img.shape[:2]
+        if (w, h) != (cam["w"], cam["h"]):
+            raise ValueError("JPEG dimensions do not match observation camera metadata")
+        self.memory.advance(hdr["sim_time"])
         f_px = (w / 2) / math.tan(math.radians(cam["hfov_deg"] / 2))
         horizon = int(h * self.cfg["horizon_frac"])
         t1 = time.perf_counter(); t["decode"] = (t1 - t0) * 1e3
@@ -220,6 +202,10 @@ class Perceiver:
         # 1) mission markers: real ArUco decode on the rendered pixels
         corners, ids, _ = self.aruco.detectMarkers(img)
         marker_boxes = []
+        detected_ids = set() if ids is None else set(int(i) for i in ids.ravel())
+        for mid in set(self.marker_history) | detected_ids:
+            history = self.marker_history.setdefault(mid, deque(maxlen=self.cfg["marker_history_frames"]))
+            history.append(mid in detected_ids)
         if ids is not None:
             for c, mid in zip(corners, ids.ravel()):
                 pts = c[0]
@@ -229,7 +215,7 @@ class Perceiver:
                 rng = self.cfg["marker_side_m"] * f_px / max(side, 1e-3)
                 # ArUco has no score; decode reliability grows with pixels per cell, so confidence
                 # is apparent size vs a reference. Say this out loud if asked.
-                conf = float(np.clip(side / self.cfg["marker_conf_px"], 0.05, 1.0))
+                conf = (sum(self.marker_history[int(mid)]) / self.cfg["marker_history_frames"]) * min(1., side / self.cfg["marker_conf_px"])
                 x0, y0 = pts.min(axis=0); x1, y1 = pts.max(axis=0)
                 bbox = (int(x0), int(y0), int(x1), int(y1))
                 marker_boxes.append(bbox)
@@ -252,8 +238,8 @@ class Perceiver:
             v = self.embedder(crop)
             nov = self.memory.novelty(v)
             kind = "anomaly" if nov >= self.cfg["anomaly_threshold"] else "rock"
-            tid = self.tracker.match(bearing, hdr["seq"]) or self.tracker.new_id(kind)
-            self.tracker.update(tid, bearing, rng, hdr["seq"], kind)
+            tid = self.tracker.match((bearing + hdr["pose"]["heading_deg"]) % 360, hdr["seq"]) or self.tracker.new_id(kind)
+            self.tracker.update(tid, (bearing + hdr["pose"]["heading_deg"]) % 360, rng, hdr["seq"], kind)
             embeddings[tid] = v
             dets.append(Detection(tid, kind, label, round(float(conf), 3), (x0, y0, x1, y1),
                                   round(bearing, 2), round(rng, 2), round(nov, 3)))
@@ -261,11 +247,11 @@ class Perceiver:
                 ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 if ok:
                     crops.append((tid, round(nov, 3), buf.tobytes()))
-        # habituation: a track that left the view is committed to memory
+        # Admit only after all candidates were scored against the same memory.
+        for tid, vector in embeddings.items():
+            self.memory.observe(tid, vector)
         for tid in self.tracker.expire(hdr["seq"]):
-            v = self.last_embeddings.pop(tid, None)
-            if v is not None:
-                self.memory.add(v)
+            self.last_embeddings.pop(tid, None)
         self.last_embeddings.update(embeddings)
         t4 = time.perf_counter(); t["embed"] = (t4 - t3) * 1e3
 

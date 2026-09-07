@@ -1,7 +1,12 @@
+> Phase 3 update (2026-09-07): frozen-memory novelty evaluation tooling is implemented
+> alongside detector training preparation. See [Phase 3 status](phase3-perception.md).
+> Actual scene training/calibration and Dev's PANEL remain pending; no GitHub pull
+> until Jabin announces Dev's update.
+
 # novelty.md — the core idea (design source of truth)
 
-**Read alongside `context.md`. Where they conflict on the idea/scoring/decision, THIS file wins.**
-**v3 · 2026-09-07**
+**Read alongside `context-iete.md` and `brain.md`. This file states the idea; `brain.md` and `interface-contract.md` specify the implemented policy and wire format.**
+**v4 · 2026-09-07 — Phase 1 equation implemented and controlled cases verified.**
 **Changelog:** v2 — ARTPS verified; differentiator re-cut from "budget-awareness" (false) to the closed-loop action policy. **v3 — execution pivoted to a simulated Mars environment + delayed scientist panel. Full utility equation specified (slack-driven). Three amplifier novelties added.**
 
 ---
@@ -20,7 +25,7 @@
 | **OnBoard Planner** (Perseverance, 2023) | budget/thermal/time scheduling | **no concept of science value** |
 | **ARTPS** (arXiv 2509.00042, Sept 2025) | learnable curiosity score, **budget-aware**, edge, explainable | **stops at a ranked list for an operator** — no autonomous act-or-stay policy |
 
-**Verified ARTPS quotes:** *"designed for edge-compute constraints, respecting memory/energy budgets, timing requirements, and communication latency"* · *"balances scientific value with operational budgets"* · *"explainable diagnostics suitable for operator-in-the-loop workflows"* · **future work:** *"active exploration policies on edge devices with strict power budgets."*
+**Verified ARTPS quotes:** *"designed for edge-compute constraints, respecting memory/energy budgets, timing requirements, and communication latency"* · *"balances scientific value with operational budgets"* · *"explainable diagnostics suitable for operator-in-the-loop workflows"* · **future work:** active exploration policies for edge compute (paraphrase, not a verbatim quotation).
 
 **Our contribution:** the closed-loop action policy. **ARTPS ranks; we act.**
 
@@ -35,62 +40,61 @@
 
 ---
 
-## The equation
+## The equation — implemented in Phase 1
 
-**1. Value — two streams**
-```
-M_i = p_i x c_i          mission value   (p = 10 marker, 1 common rock)
-C_i = n_i x c_i          curiosity value (n = novelty score in [0,1])
-```
+The old version lacked the curiosity scale and mixed normalized costs with Wh.
+The implemented definitions are:
 
-**2. Cost — what going there spends**
 ```
-Cost_i = alpha*d_i + beta*t_i      (drive distance + investigation dwell, normalised)
-```
-
-**3. Slack — the adaptive core**
-```
-B      = remaining budget
-B_req  = budget needed to finish the remaining assigned markers
-S      = (B - B_req) / B           discretionary fraction
-w_c    = max(0, S)^gamma           curiosity weight
-```
-`S` is budget *beyond what the job requires*. Negative -> behind schedule. `gamma` is one temperament dial: high = cautious, low = eager.
-
-**4. Utility**
-```
-U_i = (M_i + w_c * C_i) / (Cost_i + eps)
-target* = argmax U_i
+M = 10 * confidence
+C = k * novelty * confidence       k = 10
+cost_wh = drive_rate * estimated_distance + dwell_rate * dwell_seconds
+cost_est = max(cost_wh / 10, 0.5)
+B_req = sum of current estimates for remaining assigned markers
+slack = (B - B_req) / B            -1 when budget is zero
+w_curiosity = slack ** gamma if slack > 0 else 0
+U_mission = M / (cost_est + 0.001)
+U_curiosity = w_curiosity * C / (cost_est + 0.001)
 ```
 
-**5. Hard gate — never strand the mission**
+Every candidate, including mission fallbacks and deferred discoveries, must satisfy:
+
 ```
-accept target*  iff  B - Cost(target*) >= B_req_after * margin
-else -> fall back to the best mission target
+B >= cost_wh
+B - cost_wh >= required_for_mission_after * 1.15
 ```
 
-**Why this is defensible:** mission urgency needs no separate term. As budget drains toward what the mission requires, `S -> 0`, so `w_c -> 0` and curiosity **switches itself off**. The rover becomes single-minded exactly when it should, with no rule telling it to.
+BRAIN estimates remaining marker costs from the proposed target's estimated location.
+Known positions come from pixels and odometry; unseen markers use a 70 m estimate.
+This is a budget constraint on estimates, not a guarantee against stranding: actual
+avoidance, idle spending, and perception error remain limitations.
 
-**Worked example (matches the audit record in `interface-contract.md` section 5):**
-```
-budget 742, mission needs 490      -> S = (742-490)/742 = 0.34
-gamma = 2                          -> w_c = 0.34^2 = 0.12
-marker M02:  10 x 0.58 = 5.80  / cost 3.31          -> U = 1.75
-anomaly A07: 0.82 x 0.71 = 0.58, x w_c = 0.07 / cost 1.14 -> U = 0.06
-decision: stay on task
-```
-Same scene with budget 950 and gamma 1 gives S = 0.48, w_c = 0.48, anomaly U = 0.24 -- and if mission utility is lower at that moment, the rover deviates. **Same code, different slack: that is the whole demo.**
+Gamma is clamped to [0.1,5]. A five-second commitment lock and 1.3x switch ratio
+prevent small changes from repeatedly reversing the choice. New candidates bypass
+the lock, but must still satisfy the ratio and gate. Safety and affordability win
+over commitment. During dwell the gate is checked again for the remaining time.
 
-**The one-liner:** *curiosity never costs it the mission.*
+**Executed controlled example:** marker 30 m away at c=.60; rock 6 m away on the
+same bearing at n=.85, c=.80; two more unseen assigned markers. B_req = 179 Wh.
 
-Every term is loggable, so the audit trail is free (see `interface-contract.md` section 5).
+| Configuration | Marker U | Rock U | Decision | Reserve test |
+|---|---:|---:|---|---|
+| 210 Wh, gamma 2 | 1.817631 | 0.134588 | Marker | 177 >= 146 x 1.15 |
+| 400 Wh, gamma 1 | 1.817631 | 3.412352 | Rock | 389 >= 173 x 1.15 |
 
----
+Same policy and candidates, only budget/gamma differ. All 16 tested confidence
+combinations preserve both branches. This establishes the policy behavior with
+controlled detections; Godot scene calibration and end-to-end demonstration remain
+later phases. Full arithmetic: `brain/phase1-examples.json`.
+
+Audit v2 exposes costs in Wh, normalized costs, eligibility, the post-action mission
+estimate, and the selected action's reserve. A zero obligation has a null ratio;
+the Wh comparison remains authoritative. See `interface-contract.md`.
 
 ## Amplifier novelties (secondary — never dilute the main claim)
 
 1. **The downlink is also a decision.** At the report window bandwidth is scarce; the rover ranks what is worth the bits with the same utility machinery. Grounded in real practice (OASIS `WATCH`). Makes the panel meaningful — **the humans only see what the rover chose to show them.**
-2. **Habituation — nearly free.** With novelty as embedding-distance from a running memory, the fifth identical striped rock scores near zero *because the first one is now in memory*. Curiosity saturates on repetition with no code written for it. Emergent, scientifically correct, excellent Q&A material.
+2. **Habituation — nearly free.** With novelty as embedding-distance from a running memory, a repeated striped rock scores near zero after its appearance has been admitted to memory. Phase 1 protects a committed appearance until investigation completion, with delayed admission for other observations. Curiosity saturates on repetition with no code written for it. Emergent, scientifically correct, excellent Q&A material.
 3. **Deferred-target queue.** An anomaly it could not afford is not forgotten — it is queued with its score and revisited if slack opens later. That is what opportunistic science actually looks like.
 
 ---
@@ -114,7 +118,7 @@ If the rover can query the scene graph, the identification half of the PS is gon
 ### Perception legitimacy
 
 - **ArUco markers render as real ArUco textures on flat quads** -> OpenCV genuinely detects them, no training, identical to a physical tag. This is the uncompromised leg.
-- **Terrain and rocks textured with real AI4Mars imagery** -> keeps YOLO inside its training distribution and makes the world look credible.
+- **Curated simulated textures and geometry** form the training distribution for the later sim-labelled rock detector. AI4Mars imagery alone does not make an off-the-shelf detector valid.
 - **Curate, do not generate.** 4-5 common rock types repeated + 2-3 distinct anomalies. Generating hundreds of unique rocks would flatten the novelty signal, kill habituation, and leave the policy nothing to arbitrate. **Variety is the enemy here.**
 
 ### Motion

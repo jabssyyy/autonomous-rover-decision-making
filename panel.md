@@ -1,5 +1,11 @@
 # panel.md — PANEL lane (Dev, build this SECOND)
 
+> **Phase 1 handoff:** `interface-contract.md` now specifies audit v2 and binary JPEG
+> attachments. Strict v1 readers must update; the canned stub still supports v1.
+> BRAIN emits monotonic `clock` fields, not epoch wall fields. No static HTTP server
+> is currently supplied by BRAIN/stub BRAIN; use `python -m http.server` for page
+> development until that integration task is implemented. Browser work remains Dev's lane.
+
 **v1 · 2026-09-07** · Owner: **Dev**. Runs in a browser on the MacBook; served from Jabin's laptop.
 **Build `sim.md` first.** PANEL is deliberately second and it is the droppable lane — if it isn't ready, the delay gets narrated from BRAIN's console and the demo still lands. That is not a reason to treat it as unimportant: **this screen is where the judges see the rover think.**
 
@@ -82,14 +88,16 @@ If both screens show the same thing at the same time, there is no delay to demon
 
 ## 4. The decision log — build this properly
 
-This is the artifact that makes an uncertifiable value judgment trustworthy. **Render the arithmetic, not a summary.** A judge should be able to check `U = value_weighted / cost_est` by hand from what is on screen.
+This is the artifact that makes an uncertifiable value judgment trustworthy. **Render the arithmetic, not a summary.** A judge should be able to check `U = value_weighted / (cost_est + audit.eps)` for v2 by hand from what is on screen.
 
 For each `audit` record (schema in `interface-contract.md` §5, with the `plan.md` §6 #14 correction):
 
 - **The rover's own sentence** (`audit.text`) in plain prose, prominent. BRAIN writes this, not you — the rover explaining itself in its own words is the point.
 - **A candidates table**: `id`, `stream`, `value_raw`, `value_weighted`, `cost_wh`, `cost_est`, `U`. Highlight the chosen row.
 - **The slack line**: `budget.remaining`, `required_for_mission`, `slack`, `gamma`, `w_curiosity`.
-- **The gate**: pass/fail, `post_action_reserve`, `margin`, `required_for_mission_after`.
+- **The gate**: pass/fail, `reserve_wh`, `cost_wh`, `post_action_reserve`, `margin`, `required_for_mission_after`. A null ratio means no remaining mission requirement; show "not applicable," not zero.
+- Use `audit.version === 2` to enable the extended fields. The legacy stub lacks them.
+- HALT is sticky in this version; there is no general resume button/command.
 
 **Show both `value_raw` and `value_weighted`.** Raw alone hides the policy; weighted alone hides what was given up. The gap between them is the rover's judgment made visible — that column *is* the contribution.
 
@@ -101,15 +109,16 @@ Colour the decision by kind (`drive_to_target` / `investigate` / `survey` / `rep
 
 ⚠ **Never compute the delay from the Mac's clock.** The two laptops' wall clocks differ by seconds, and a judge watching a "60 s" delay read 63 s will reasonably wonder what else is approximate.
 
-BRAIN stamps `wall_generated_at` and `wall_delivered_at` (both epoch seconds, both from *its* clock). Display:
+BRAIN stamps a monotonic `clock` object at delivery. Display:
 ```js
-const lagSeconds = msg.wall_delivered_at - msg.wall_generated_at;   // authoritative
+const lagSeconds = msg.clock.delay_real_s;   // authoritative
 ```
 Use `Date.now()` **only** for the cosmetic "arrived 4 s ago" counter, never for the delay itself.
 
 Make the delay banner large and always visible. A judge should never have to ask whether the delay is real.
 
-⚠ Contract note (`plan.md` §6 #15): §6 of the interface contract shows a 60 s delay while §9's config implies 3600 sim-s. **The delay is 60 REAL seconds.** BRAIN emits both the sim fields and the wall fields; use the wall ones.
+**The delay is 60 REAL seconds.** The old compressed-clock ambiguity is resolved:
+physics runs at 1x, and BRAIN emits a monotonic `clock` object. Use `clock.delay_real_s`.
 
 ---
 
@@ -120,6 +129,8 @@ Two buttons: **ABORT INVESTIGATION** (`abort_investigation`) and **HALT** (`halt
 ```js
 ws.send(JSON.stringify({
   type: "uplink",
+  issued_at: lastTelemetry.delivered_at,
+  arrives_at: lastTelemetry.delivered_at + 60,
   command: "abort_investigation",
   payload: { reason: "operator override" }
 }));
@@ -141,7 +152,7 @@ Vanilla HTML + CSS + JS. No React, no bundler, no `npm`. Three files Jabin drops
 
 CDN libraries only if they earn their place. The layout above is plain CSS grid.
 
-**Thumbnails:** BRAIN sends JPEG bytes base64-encoded in the telemetry JSON; render with `img.src = "data:image/jpeg;base64," + b64`. Simple and adequate at 5 Hz-into-1 Hz.
+**Thumbnails:** Each telemetry JSON header is followed by one binary JPEG per attachment, in order. Set `ws.binaryType = "arraybuffer"`, make a JPEG Blob for each attachment, and use object URLs for images (revoke replaced URLs). The payload has no base64 image fields.
 
 **Reconnect:** if the socket drops, retry every 1 s and show `● LINK LOST`. Campus wifi will drop at least once today.
 
@@ -180,7 +191,8 @@ On `websockets` ≥ 14 the handler takes **one** argument and lives in `websocke
 from websockets.asyncio.server import serve        # ✓
 async def handler(websocket): ...                  # ✓ one argument
 ```
-Jabin's laptop runs Python 3.10.11 with `websockets` 16.0 (17.x needs ≥ 3.11). The `websockets.asyncio` API is identical across both — **nobody should upgrade Python today.**
+The verified BRAIN environment is the project Python 3.13.5 venv with `websockets`
+17.1. Use the single-argument handler already implemented in BRAIN.
 
 ---
 
@@ -189,7 +201,7 @@ Jabin's laptop runs Python 3.10.11 with `websockets` 16.0 (17.x needs ≥ 3.11).
 - ☐ Loads from `stub_brain.py` with no Jabin dependency
 - ☐ Decision log renders the full candidates table; `U` checks out by hand
 - ☐ Both `value_raw` and `value_weighted` shown
-- ☐ Delay computed from BRAIN's two wall stamps, not the Mac's clock
+- ☐ Delay computed from BRAIN's monotonic clock fields, not the Mac's clock
 - ☐ Delay banner visible at a glance from across a room
 - ☐ Interrupt sends, shows a countdown, and renders `uplink_stale` loudly
 - ☐ Reconnects after a dropped socket

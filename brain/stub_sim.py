@@ -44,17 +44,10 @@ ARUCO = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 F_PX = (W / 2) / math.tan(math.radians(HFOV_DEG / 2))
 HORIZON_Y = H // 2
 
-DEFAULT_CFG = {"time_compression": 60, "comms_delay_real_s": 60, "decision_interval_sim_s": 1.0,
-               "observation_rate_hz": 10, "report_interval_sim_s": 7200, "gamma": 2.0,
-               "alpha_distance": 1.0, "beta_time": 1.0, "mission_margin": 1.15}
+DEFAULT_CFG = yaml.safe_load(Path(__file__).with_name("config.yaml").read_text(encoding="utf-8"))
 
 # --- SIM-side physics. Contract section 4: SIM owns budget accounting. ---------
-V_MAX_M_PER_SIMS = 0.05        # Curiosity-class crawl. At 60x and 5 Hz that is 0.6 m per frame.
 TURN_DEG_PER_SIMS = 5.0
-COST_DRIVE_WH_PER_M = 1.0
-COST_DWELL_WH_PER_SIMS = 0.1
-COST_IDLE_WH_PER_SIMS = 0.01
-INVESTIGATE_DWELL_SIMS = 120.0
 CONFIRM_RANGE_M = 3.0
 HAZARD_SENSE_M = 8.0
 AVOID_RANGE_M = 2.5
@@ -63,7 +56,10 @@ AVOID_RANGE_M = 2.5
 class World:
     """SIM-only knowledge. NOTHING here reaches BRAIN except through header() and render()."""
 
-    def __init__(self, budget: float, assigned: list[str], seed: int = 7) -> None:
+    def __init__(self, budget: float, assigned: list[str], seed: int = 7, cfg: dict | None = None) -> None:
+        self.cfg = dict(DEFAULT_CFG if cfg is None else cfg)
+        self.last_action_time = time.monotonic()
+        self.confirm_elapsed = 0.0
         rng = random.Random(seed)
         self.markers = {"M01": (18.0, 6.0), "M02": (34.0, -9.0), "M03": (52.0, 11.0)}
         self.rocks: list[tuple] = []            # (x, y, radius_m, shade, kind)
@@ -86,6 +82,7 @@ class World:
     # ---- contract section 3: apply an action ---------------------------------
     def apply(self, action: dict) -> None:
         validate_action(action)                 # SIM refuses malformed actions, loudly
+        self.last_action_time = time.monotonic()
         d = action["decision"]
         drv = action["drive"]
         self.decision = d
@@ -95,7 +92,7 @@ class World:
         elif d == "investigate":
             label = action["target"]["label"]
             if self.dwell_left <= 0 or self.committed != label:
-                self.dwell_left = INVESTIGATE_DWELL_SIMS
+                self.dwell_left = self.cfg["investigate_dwell_sim_s"]
             self.committed, self.speed, self.state = label, 0.0, "AUTONOMOUS"
         elif d == "continue":
             self.heading_cmd, self.speed, self.state = drv["heading_deg"], drv["speed"], "AUTONOMOUS"
@@ -104,7 +101,7 @@ class World:
         elif d == "report":
             self.speed, self.state = 0.0, "REPORTING"
         elif d == "hold":
-            self.speed = 0.0
+            self.speed, self.dwell_left = 0.0, 0.0
             if self.state == "REPORTING":
                 self.state = "AWAITING_UPLINK"
 
@@ -125,12 +122,17 @@ class World:
         return best
 
     def step(self, dt: float) -> None:
+        if time.monotonic() - self.last_action_time > 2.5 or self.budget <= 0:
+            self.speed, self.dwell_left = 0., 0.
         self.sim_time += dt
+        if self.committed in self.markers and self.rel(self.markers[self.committed])[0] < CONFIRM_RANGE_M:
+            self.speed = 0.  # remain at the marker during confirmation dwell
         self.seq += 1
-        cost = COST_IDLE_WH_PER_SIMS * dt
+        cost = self.cfg["idle_rate_wh_per_s"] * dt
         if self.dwell_left > 0:
-            self.dwell_left -= dt
-            cost += COST_DWELL_WH_PER_SIMS * dt
+            elapsed = min(dt, self.dwell_left)
+            self.dwell_left -= elapsed
+            cost += self.cfg["dwell_rate_wh_per_s"] * elapsed
         else:
             hz_r, hz_b = self.hazard()
             cmd = self.heading_cmd
@@ -139,16 +141,27 @@ class World:
             err = (cmd - self.heading + 180.0) % 360.0 - 180.0
             self.heading = (self.heading + max(-TURN_DEG_PER_SIMS * dt, min(TURN_DEG_PER_SIMS * dt, err))) % 360.0
             if self.speed > 0:
-                dist = self.speed * V_MAX_M_PER_SIMS * dt
+                dist = self.speed * self.cfg["max_speed_m_per_s"] * dt
                 self.x += dist * math.cos(math.radians(self.heading))
                 self.y += dist * math.sin(math.radians(self.heading))
-                cost += COST_DRIVE_WH_PER_M * dist
+                cost += self.cfg["drive_rate_wh_per_m"] * dist
         self.budget = max(0.0, self.budget - cost)
-        # confirmation needs BOTH: BRAIN identified+committed to this marker AND drove close.
-        if self.committed in self.markers and self.committed not in self.confirmed:
+        # Confirmation requires visual commitment, arrival, and the shared dwell.
+        if (self.committed in self.markers and self.committed not in self.confirmed
+                and self.decision == "drive_to_target" and self.budget > 0
+                and time.monotonic() - self.last_action_time <= 2.5):
             if self.rel(self.markers[self.committed])[0] < CONFIRM_RANGE_M:
-                self.confirmed.append(self.committed)
-                self.committed, self.speed = None, 0.0
+                self.speed = 0.
+                elapsed = min(dt, max(0., self.cfg["confirm_dwell_sim_s"] - self.confirm_elapsed))
+                self.confirm_elapsed += elapsed
+                self.budget = max(0., self.budget - self.cfg["dwell_rate_wh_per_s"] * elapsed)
+                if self.confirm_elapsed >= self.cfg["confirm_dwell_sim_s"]:
+                    self.confirmed.append(self.committed)
+                    self.committed, self.confirm_elapsed = None, 0.
+            else:
+                self.confirm_elapsed = 0.
+        else:
+            self.confirm_elapsed = 0.
 
     # ---- contract section 2: the ONLY things BRAIN gets ------------------------
     def header(self) -> dict:
@@ -203,7 +216,7 @@ class World:
                     img[mask > 0] = striped[mask > 0]
             else:
                 label = it[3]
-                side = int(F_PX * MARKER_SIDE_M / d)
+                side = int(F_PX * self.cfg["marker_side_m"] / d)
                 if side >= 8:
                     tag = cv2.aruco.generateImageMarker(ARUCO, int(label[1:]), side)   # real ArUco pixels
                     pad = max(2, side // 6)                                             # white quiet zone
@@ -254,7 +267,7 @@ async def run(args: argparse.Namespace) -> None:
     if Path(args.config).exists():
         cfg.update(yaml.safe_load(Path(args.config).read_text(encoding="utf-8")) or {})
     assigned = [m.strip() for m in args.markers.split(",") if m.strip()]
-    world = World(args.budget, assigned, seed=args.seed)
+    world = World(args.budget, assigned, seed=args.seed, cfg=cfg)
     dt_sim = cfg["time_compression"] / args.hz
     period = 1.0 / args.hz
     stats = {"n": 0, "last": "-"}
@@ -300,13 +313,14 @@ async def run(args: argparse.Namespace) -> None:
         except ConnectionClosed as e:
             print(f"BRAIN link closed ({e}); reconnecting...")
             rx.cancel()
+            world.speed, world.dwell_left = 0., 0.
             continue
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--brain", default="ws://localhost:8765")
-    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--config", default=str(Path(__file__).with_name("config.yaml")))
     ap.add_argument("--hz", type=float, default=5.0)
     ap.add_argument("--budget", type=float, default=950.0, help="start budget (Wh). stay-run ~742, deviate-run ~950")
     ap.add_argument("--markers", default="M01,M02,M03")
